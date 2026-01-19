@@ -33,9 +33,9 @@ DEBUG = 'RENDER'
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com' #os.environ.get('EMAIL_HOST')
-EMAIL_PORT = os.environ.get('EMAIL_PORT', 587)
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False # Do not use SSL on port 587
+EMAIL_PORT = os.environ.get('EMAIL_PORT', 465)
+EMAIL_USE_TLS = False
+EMAIL_USE_SSL = True # Do not use SSL on port 587
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'princeadewale391@gmail.com')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
