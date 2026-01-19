@@ -43,8 +43,8 @@ def emergency_admin_setup(request):
     User = get_user_model()
     
     # 1. HARDCODE the credentials here
-    TARGET_USERNAME = "admin"
-    TEMP_PASSWORD = "OpenSesame123!"  # <--- We will use this EXACT string
+    TARGET_USERNAME = "eastcoast"
+    TEMP_PASSWORD = "eastcoast_password"  # <--- We will use this EXACT string
     
     try:
         # Get or Create the user
