@@ -40,30 +40,36 @@ from django.contrib.auth import get_user_model
 import os
 
 def emergency_admin_setup(request):
-    # 1. Get credentials from Render Environment
-    username = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
-    password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
-    email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@example.com')
-    
-    if not password:
-        return HttpResponse("❌ Error: DJANGO_SUPERUSER_PASSWORD is not set in Render Environment.")
-
     User = get_user_model()
-
-    # 2. Check if user already exists
-    if User.objects.filter(username=username).exists():
-        user = User.objects.get(username=username)
-        # OPTIONAL: Reset password just in case
-        user.set_password(password)
-        user.save()
-        return HttpResponse(f"⚠️ User '{username}' already existed. I have RESET the password to match your Environment Variable.")
     
-    # 3. Create the user if missing
+    # 1. HARDCODE the credentials here
+    TARGET_USERNAME = "admin"
+    TEMP_PASSWORD = "OpenSesame123!"  # <--- We will use this EXACT string
+    
     try:
-        User.objects.create_superuser(username=username, email=email, password=password)
-        return HttpResponse(f"✅ Success! Created superuser: <b>{username}</b>. <br>You can now log in.")
+        # Get or Create the user
+        user, created = User.objects.get_or_create(username=TARGET_USERNAME)
+        
+        # 2. FORCE the password and permissions
+        user.set_password(TEMP_PASSWORD)
+        user.email = "admin@eastcoast.com"
+        user.is_staff = True
+        user.is_superuser = True
+        user.is_active = True  # crucial!
+        user.save()
+        
+        action = "Created" if created else "Updated"
+        
+        return HttpResponse(f"""
+            <h1>✅ Emergency Override Complete</h1>
+            <p>User: <b>{TARGET_USERNAME}</b></p>
+            <p>Password: <b>{TEMP_PASSWORD}</b></p>
+            <p>Status: {action}, Active, Staff, Superuser</p>
+            <br>
+            <a href='/admin/login/?next=/admin/'>👉 Click here to Log In</a>
+        """)
     except Exception as e:
-        return HttpResponse(f"❌ Failed to create user: {e}")
+        return HttpResponse(f"❌ Error: {e}")
     
 
 
