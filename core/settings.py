@@ -29,7 +29,12 @@ SECRET_KEY = 'django-insecure-_ou(c*bppis1u$!eu8+*c737psa_bkw03r$9w-zc*15cigg$dl
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = 'RENDER'
 
-ALLOWED_HOSTS = ['https://iot-bridge.onrender.com']
+ALLOWED_HOSTS = [
+    'iot-bridge.onrender.com', 
+    '127.0.0.1', 
+    'localhost',
+    '.onrender.com',
+    ]
 
 # telling the app to use my user model
 AUTH_USER_MODEL = 'devices.User'
