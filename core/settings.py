@@ -37,7 +37,7 @@ EMAIL_PORT = os.environ.get('EMAIL_PORT', 587)
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False # Do not use SSL on port 587
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'princeadewale391@gmail.com')
-EMAIL_HOST_PASSWORD = 'pcff ntmw allr vtgh' #os.environ.get('EMAIL_HOST_PASSWORD')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_TIMEOUT = 30
 
