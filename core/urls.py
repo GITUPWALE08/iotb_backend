@@ -37,6 +37,7 @@ urlpatterns = [
 
     path('register/', RegisterView.as_view(), name='register'),
     path('api/v1/auth/activate/<str:uidb64>/<str:token>/', ActivateAccountView.as_view(), name='activate-account'),
+    path('api/v1/auth/resend-verification/', ResendVerificationView.as_view(), name='resend-verification'),
 
     # Login: Returns Access + Refresh tokens
     path('api/v1/auth/login/', TokenObtainPairView.as_view(), name='login'),

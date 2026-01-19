@@ -15,6 +15,10 @@ from .tokens import email_verification_token
 from django.core.mail import send_mail
 from django.utils.encoding import force_str
 from .tokens import email_verification_token
+from django.contrib.auth import get_user_model
+from .utils import send_verification_email # The function we built in the previous step
+
+User = get_user_model()
 
 
 logger = logging.getLogger(__name__)
@@ -126,6 +130,25 @@ class ActivateAccountView(APIView):
         else:
             logger.warning(f"Failed activation attempt for UID: {uidb64}")
             return Response({"error": "Activation link is invalid or expired."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        from django.contrib.auth import get_user_model
+
+
+class ResendVerificationView(APIView):
+    # This should be open to unauthenticated users
+    permission_classes = [] 
+
+    def post(self, request):
+        email = request.data.get('email')
+        try:
+            user = User.objects.get(email=email)
+            if not user.is_active:
+                send_verification_email(user, request)
+                return Response({"message": "Verification protocol re-initialized."}, status=status.HTTP_200_OK)
+            return Response({"error": "Account is already active."}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            # We return 200 even if user doesn't exist for security (preventing email harvesting)
+            return Response({"message": "Verification protocol re-initialized."}, status=status.HTTP_200_OK)
         
 
 # class RegisterView(generics.CreateAPIView):
