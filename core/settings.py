@@ -228,9 +228,6 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# For testing EMAIL locally on Windows
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
 # For Real Production (Example with Gmail/SMTP):
 # EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # EMAIL_HOST = 'smtp.sendgrid.net'
