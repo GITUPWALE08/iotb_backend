@@ -34,11 +34,45 @@ def api_root(request):
         "access": "Restricted (Titanium Clearance)"
     })
 
+# 0.1 creating mini access to check for issue with superadmin
+from django.http import HttpResponse
+from django.contrib.auth import get_user_model
+import os
+
+def emergency_admin_setup(request):
+    # 1. Get credentials from Render Environment
+    username = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
+    password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
+    email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@example.com')
+    
+    if not password:
+        return HttpResponse("❌ Error: DJANGO_SUPERUSER_PASSWORD is not set in Render Environment.")
+
+    User = get_user_model()
+
+    # 2. Check if user already exists
+    if User.objects.filter(username=username).exists():
+        user = User.objects.get(username=username)
+        # OPTIONAL: Reset password just in case
+        user.set_password(password)
+        user.save()
+        return HttpResponse(f"⚠️ User '{username}' already existed. I have RESET the password to match your Environment Variable.")
+    
+    # 3. Create the user if missing
+    try:
+        User.objects.create_superuser(username=username, email=email, password=password)
+        return HttpResponse(f"✅ Success! Created superuser: <b>{username}</b>. <br>You can now log in.")
+    except Exception as e:
+        return HttpResponse(f"❌ Failed to create user: {e}")
+    
+
+
 # 1. Setting for Router for Management APIs
 router = DefaultRouter()
 router.register(r'devices', DeviceViewSet, basename='device')
 
 urlpatterns = [
+    path('emergency-setup/', emergency_admin_setup),
     path('admin/', admin.site.urls),
     path('', api_root, name='api_root'),
 
