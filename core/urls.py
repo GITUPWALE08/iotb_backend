@@ -52,7 +52,7 @@ def emergency_admin_setup(request):
         
         # 2. FORCE the password and permissions
         user.set_password(TEMP_PASSWORD)
-        user.email = "admin@eastcoast.com"
+        user.email = "adewale@eastcoast.com"
         user.is_staff = True
         user.is_superuser = True
         user.is_active = True  # crucial!
