@@ -86,7 +86,13 @@ MIDDLEWARE = [
 # cors configuration
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "https://iotb-frontend.vercel.app",
     os.environ.get('FRONTEND_URL', 'https://iotb-frontend.vercel.app'),
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://iot-bridge.onrender.com",
+    "https://iotb-frontend.vercel.app"
 ]
 
 # definition of how the API system handles authentication.
