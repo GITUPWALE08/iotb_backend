@@ -38,3 +38,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         # Crucial: Use make_password to hash the password before saving to MySQL
         validated_data['password'] = make_password(validated_data['password'])
         return super(RegisterSerializer, self).create(validated_data)
+    
+
+    # def create(self, validated_data):
+    #     # This handles the secure password hashing automatically
+    #     user = User.objects.create_user(
+    #         username=validated_data['username'],
+    #         email=validated_data['email'],
+    #         password=validated_data['password'],
+    #         profession=validated_data.get('profession', '')
+    #     )
+    #     return user

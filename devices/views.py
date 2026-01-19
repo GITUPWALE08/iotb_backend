@@ -14,9 +14,12 @@ from django.utils.encoding import force_bytes
 from .tokens import email_verification_token
 from django.core.mail import send_mail
 from django.utils.encoding import force_str
+from django.conf import settings
 from .tokens import email_verification_token
 from django.contrib.auth import get_user_model
-from .utils import send_verification_email # The function we built in the previous step
+from .utils import send_verification_email
+
+from django.contrib.auth.tokens import default_token_generator
 
 User = get_user_model()
 
@@ -78,28 +81,62 @@ class LogoutView(APIView):
             return Response({"error": "Invalid token or already logged out."}, status=status.HTTP_400_BAD_REQUEST)
     
 
-class RegisterView(generics.CreateAPIView):
-    serializer_class = RegisterSerializer
+# class RegisterView(generics.CreateAPIView):
+#     serializer_class = RegisterSerializer
+#     permission_classes = [permissions.AllowAny]
+
+#     def perform_create(self, serializer):
+#         user = serializer.save() # is_active is False by default
+        
+#         # 1. Generate Token and UID
+#         uid = urlsafe_base64_encode(force_bytes(user.pk))
+#         token = email_verification_token.make_token(user)
+        
+#         # 2. Build the Verification URL (Points to your React Frontend)
+#         verify_url = f"http://localhost:5173/verify-email/{uid}/{token}/"
+        
+#         # 3. Send the Email
+#         send_mail(
+#             subject="Verify your IIoT Bridge Account",
+#             message=f"Hi {user.username}, welcome to the platform. Verify here: {verify_url}",
+#             from_email="noreply@iotbridge.com",
+#             recipient_list=[user.email],
+#             fail_silently=False,
+#         )
+
+
+
+class RegisterView(APIView):
+    # Allow anyone to register (no login required)
     permission_classes = [permissions.AllowAny]
 
-    def perform_create(self, serializer):
-        user = serializer.save() # is_active is False by default
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
         
-        # 1. Generate Token and UID
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = email_verification_token.make_token(user)
-        
-        # 2. Build the Verification URL (Points to your React Frontend)
-        verify_url = f"http://localhost:5173/verify-email/{uid}/{token}/"
-        
-        # 3. Send the Email
-        send_mail(
-            subject="Verify your IIoT Bridge Account",
-            message=f"Hi {user.username}, welcome to the platform. Verify here: {verify_url}",
-            from_email="noreply@iotbridge.com",
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
+        if serializer.is_valid():
+            # 1. Save the user instance but don't commit to DB yet if you need custom logic
+            # However, standard save() is fine if we update is_active immediately after.
+            user = serializer.save()
+            
+            # 2. Force the account to be inactive
+            user.is_active = False
+            user.save()
+            
+            # 3. Send the "Onyx & Cyan" verification email
+            try:
+                send_verification_email(user, request)
+            except Exception as e:
+                # Log this error in production (Sentry/CloudWatch)
+                print(f"Email sending failed: {e}")
+                # We still return 201 because the user WAS created. 
+                # They can use the "Resend Verification" button later.
+            
+            return Response(
+                {"message": "Account initialized. Please check your email to activate protocol."},
+                status=status.HTTP_201_CREATED
+            )
+            
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ActivateAccountView(APIView):
@@ -151,22 +188,54 @@ class ResendVerificationView(APIView):
             return Response({"message": "Verification protocol re-initialized."}, status=status.HTTP_200_OK)
         
 
-# class RegisterView(generics.CreateAPIView):
-#     """
-#     Public Endpoint for New User Registration:
-#     - Logic: Validates input -> Hashes Password -> Creates User
-#     - Security: AllowAny (No token required)
-#     """
-#     queryset = User.objects.all()
-#     permission_classes = (permissions.AllowAny,)
-#     serializer_class = RegisterSerializer
+class RequestPasswordResetView(APIView):
+    permission_classes = [] # Publicly accessible
 
-#     # throttling burst limit 
-#     throttle_classes = [ScopedRateThrottle]
-#     throttle_scope = 'burst'
+    def post(self, request):
+        email = request.data.get('email')
+        user = User.objects.filter(email=email).first()
+        
+        if user:
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            # Point this to your Vercel frontend URL
+            reset_link = f"{settings.FRONTEND_URL}/password-reset-confirm/{uid}/{token}/"
+            
+            # Send the branded email (similar to verification)
+            send_mail(
+                'Reset Your EastCoast Bridge Security String',
+                f'Use this link to reset your password: {reset_link}',
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+            
+        return Response({"message": "If an account exists, a reset link has been sent."}, status=200)
+    
 
-#     def post(self, request, *args, **kwargs):
-#         response = super().post(request, *args, **kwargs)
-#         # Custom log for security monitoring
-#         logger.info(f"New user account created: {request.data.get('username')}")
-#         return response
+class PasswordResetConfirmView(APIView):
+    permission_classes = []  # Publicly accessible
+
+    def post(self, request):
+        uidb64 = request.data.get('uid')
+        token = request.data.get('token')
+        new_password = request.data.get('new_password')
+
+        if not all([uidb64, token, new_password]):
+            return Response({"error": "Incomplete reset data."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # 1. Decode the user ID
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response({"error": "Invalid user identification."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Validate the token
+        if default_token_generator.check_token(user, token):
+            # 3. Securely set the new password
+            user.set_password(new_password)
+            user.save()
+            return Response({"message": "Security String successfully rotated."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Invalid or expired reset token."}, status=status.HTTP_400_BAD_REQUEST)
