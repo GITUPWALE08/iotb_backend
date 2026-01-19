@@ -34,7 +34,7 @@ def api_root(request):
         "access": "Restricted (Titanium Clearance)"
     })
 
-# backend/core/urls.py
+import socket
 from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.conf import settings
@@ -42,25 +42,36 @@ import os
 
 def debug_email(request):
     try:
-        # 1. Print settings to the screen (Masking the password)
-        user = os.environ.get('EMAIL_HOST_USER', 'Not Set')
-        has_pass = "YES" if os.environ.get('EMAIL_HOST_PASSWORD') else "NO"
+        # 1. Resolve Gmail's IP (Tests DNS/Network)
+        try:
+            gmail_ip = socket.gethostbyname('smtp.gmail.com')
+        except Exception as e:
+            gmail_ip = f"DNS FAILED: {e}"
+
+        # 2. Capture Settings
+        port = getattr(settings, 'EMAIL_PORT', 'Unknown')
+        use_ssl = getattr(settings, 'EMAIL_USE_SSL', 'Unknown')
+        use_tls = getattr(settings, 'EMAIL_USE_TLS', 'Unknown')
         backend = settings.EMAIL_BACKEND
         
-        info = f"User: {user} <br> Password Set: {has_pass} <br> Backend: {backend} <br><hr>"
+        info = (
+            f"Target: smtp.gmail.com ({gmail_ip}) <br>"
+            f"Port: <b>{port}</b> <br>"
+            f"SSL: {use_ssl} | TLS: {use_tls} <br>"
+            f"Backend: {backend} <hr>"
+        )
         
-        # 2. Attempt to send
+        # 3. Attempt Send
         send_mail(
-            'Render Debug Test',
-            'If you see this, the server is configured correctly.',
+            'Render Port Test',
+            'Testing connectivity.',
             settings.EMAIL_HOST_USER,
-            [settings.EMAIL_HOST_USER], # Send to yourself
+            [settings.EMAIL_HOST_USER],
             fail_silently=False,
         )
-        return HttpResponse(info + "<h1 style='color:green'>✅ Email Sent Successfully!</h1> Check your inbox.")
+        return HttpResponse(info + "<h1 style='color:green'>✅ Sent!</h1>")
     except Exception as e:
         return HttpResponse(info + f"<h1 style='color:red'>❌ Failed: {e}</h1>")
-
 
 
 # 1. Setting for Router for Management APIs

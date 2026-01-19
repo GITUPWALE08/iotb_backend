@@ -32,7 +32,7 @@ DEBUG = 'RENDER'
 
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com' #os.environ.get('EMAIL_HOST')
+EMAIL_HOST = 'smtp.gmail.com' \
 EMAIL_PORT = os.environ.get('EMAIL_PORT', 465)
 EMAIL_USE_TLS = False
 EMAIL_USE_SSL = True # Do not use SSL on port 587
