@@ -39,37 +39,37 @@ from django.http import HttpResponse
 from django.contrib.auth import get_user_model
 import os
 
-def emergency_admin_setup(request):
-    User = get_user_model()
+# def emergency_admin_setup(request):
+#     User = get_user_model()
     
-    # 1. HARDCODE the credentials here
-    TARGET_USERNAME = "eastcoast"
-    TEMP_PASSWORD = "eastcoast_password"  # <--- We will use this EXACT string
+#     # 1. HARDCODE the credentials here
+#     TARGET_USERNAME = "eastcoast"
+#     TEMP_PASSWORD = "eastcoast_password"  # <--- We will use this EXACT string
     
-    try:
-        # Get or Create the user
-        user, created = User.objects.get_or_create(username=TARGET_USERNAME)
+#     try:
+#         # Get or Create the user
+#         user, created = User.objects.get_or_create(username=TARGET_USERNAME)
         
-        # 2. FORCE the password and permissions
-        user.set_password(TEMP_PASSWORD)
-        user.email = "adewale@eastcoast.com"
-        user.is_staff = True
-        user.is_superuser = True
-        user.is_active = True  # crucial!
-        user.save()
+#         # 2. FORCE the password and permissions
+#         user.set_password(TEMP_PASSWORD)
+#         user.email = "adewale@eastcoast.com"
+#         user.is_staff = True
+#         user.is_superuser = True
+#         user.is_active = True  # crucial!
+#         user.save()
         
-        action = "Created" if created else "Updated"
+#         action = "Created" if created else "Updated"
         
-        return HttpResponse(f"""
-            <h1>✅ Emergency Override Complete</h1>
-            <p>User: <b>{TARGET_USERNAME}</b></p>
-            <p>Password: <b>{TEMP_PASSWORD}</b></p>
-            <p>Status: {action}, Active, Staff, Superuser</p>
-            <br>
-            <a href='/admin/login/?next=/admin/'>👉 Click here to Log In</a>
-        """)
-    except Exception as e:
-        return HttpResponse(f"❌ Error: {e}")
+#         return HttpResponse(f"""
+#             <h1>✅ Emergency Override Complete</h1>
+#             <p>User: <b>{TARGET_USERNAME}</b></p>
+#             <p>Password: <b>{TEMP_PASSWORD}</b></p>
+#             <p>Status: {action}, Active, Staff, Superuser</p>
+#             <br>
+#             <a href='/admin/login/?next=/admin/'>👉 Click here to Log In</a>
+#         """)
+#     except Exception as e:
+#         return HttpResponse(f"❌ Error: {e}")
     
 
 
@@ -78,7 +78,7 @@ router = DefaultRouter()
 router.register(r'devices', DeviceViewSet, basename='device')
 
 urlpatterns = [
-    path('emergency-setup/', emergency_admin_setup),
+    # path('emergency-setup/', emergency_admin_setup),
     path('admin/', admin.site.urls),
     path('', api_root, name='api_root'),
 
