@@ -23,6 +23,16 @@ from devices.views import  ActivateAccountView
 from devices.views import *
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from django.http import JsonResponse
+
+#0.0 Defining the Health Check view directly here
+def api_root(request):
+    return JsonResponse({
+        "system": "EastCoast Bridge",
+        "version": "1.0.0",
+        "status": "OPERATIONAL",
+        "access": "Restricted (Titanium Clearance)"
+    })
 
 # 1. Setting for Router for Management APIs
 router = DefaultRouter()
@@ -30,6 +40,7 @@ router.register(r'devices', DeviceViewSet, basename='device')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', api_root, name='api_root'),
 
     # --- AUTHENTICATION ---
     # Sign up
