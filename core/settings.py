@@ -81,7 +81,7 @@ MIDDLEWARE = [
 # cors configuration
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    os.environ.get('FRONTEND_URL', 'https://your-app.vercel.app'),
+    os.environ.get('FRONTEND_URL', 'https://iotb-frontend.vercel.app'),
 ]
 
 # definition of how the API system handles authentication.
