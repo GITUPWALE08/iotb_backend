@@ -30,15 +30,16 @@ SECRET_KEY = 'django-insecure-_ou(c*bppis1u$!eu8+*c737psa_bkw03r$9w-zc*15cigg$dl
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = 'RENDER'
 
+EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = os.environ.get('EMAIL_PORT', 2525)
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False # Do not use SSL on port 587
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'princeadewale391@gmail.com')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+ANYMAIL = {
+    "MAILGUN_API_KEY": os.environ.get("MAILGUN_API_KEY"),
+    "MAILGUN_SENDER_DOMAIN": os.environ.get("MAILGUN_DOMAIN"),
+}
+
+DEFAULT_FROM_EMAIL = os.environ.get("MAILGUN_FROM_EMAIL")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
 EMAIL_TIMEOUT = 30
 
 
@@ -71,6 +72,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'anymail',
 ]
 
 
