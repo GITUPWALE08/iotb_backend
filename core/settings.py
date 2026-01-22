@@ -27,8 +27,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-_ou(c*bppis1u$!eu8+*c737psa_bkw03r$9w-zc*15cigg$dl'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = 'RENDER'
+# This sets DEBUG to False if you are on Render, and True otherwise.
+DEBUG = not os.environ.get('RENDER')
 
 EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
 
@@ -121,6 +121,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
     ],

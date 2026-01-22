@@ -3,17 +3,18 @@ import json
 from telemetry.models import TelemetryLog
 from devices.models import Device
 
+
 def on_message(client, userdata, msg):
-    # 1. Parse the incoming JSON from the device
     payload = json.loads(msg.payload.decode())
     device_id = payload.get('device_id')
     api_key = payload.get('api_key')
     
-    # 2. Re-use the same logic we used in the View!
-    # Validate API Key, check Device ID, then save
+    # 🚨 SECURITY FIX: Hash the key to match DataIngestionView logic
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest() if api_key else ""
+
     try:
-        device = Device.objects.get(id=device_id, is_active=True)
-        # (Security check here matches our hashing logic)
+        # Validate against the HASH, not just the ID
+        device = Device.objects.get(id=device_id, api_key_hash=key_hash, is_active=True)
         
         TelemetryLog.objects.create(
             device=device,
@@ -21,9 +22,12 @@ def on_message(client, userdata, msg):
             value=payload.get('value'),
             timestamp=payload.get('timestamp')
         )
-        print(f"MQTT Data saved for {device.name}")
+        print(f"✅ MQTT Data saved for {device.name}")
+    except Device.DoesNotExist:
+        print(f"❌ BLOCKING unauthorized MQTT attempt for Device {device_id}")
     except Exception as e:
-        print(f"MQTT Error: {e}")
+        print(f"⚠️ MQTT Error: {e}")
+
 
 # Setup the listener
 client = mqtt.Client()

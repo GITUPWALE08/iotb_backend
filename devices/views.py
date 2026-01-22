@@ -58,6 +58,26 @@ class DeviceViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         logger.warning(f"Device {instance.id} being deleted by {request.user}")
         return super().destroy(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        """
+        1. Generate a secure random key (e.g., sk_live_...)
+        2. Hash it for the database (SHA-256)
+        3. Save the Hash to DB, but attach Raw Key to object for the UI
+        """
+        # Generate the Raw Key (The user sees this ONCE)
+        raw_key = f"sk_{secrets.token_urlsafe(24)}"
+        
+        # Hash it (The database stores this)
+        hashed_key = hashlib.sha256(raw_key.encode()).hexdigest()
+        
+        # Save to DB with the owner and the HASH
+        instance = serializer.save(owner=self.request.user, api_key_hash=hashed_key)
+        
+        # Attach raw key to the instance so Serializer can show it in the response
+        instance.raw_api_key = raw_key
+        
+        logger.info(f"Device {instance.id} created with new secure key.")
     
 
 class LogoutView(APIView):
