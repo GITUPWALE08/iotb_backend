@@ -37,8 +37,23 @@ class MediaLog(models.Model):
 # --- 6. ALERT CONFIGURATION ---
 class AlertThreshold(models.Model):
     """The Watchdog: defines when to notify the engineer."""
+
+    OPERATOR_CHOICES = [
+        ('>', 'Greater Than'),
+        ('<', 'Less Than'),
+        ('=', 'Equals'),
+    ]
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='alerts')
     parameter = models.CharField(max_length=50) # e.g., 'temperature'
     min_value = models.FloatField(null=True, blank=True)
     max_value = models.FloatField(null=True, blank=True)
+    operator = models.CharField(max_length=1, choices=OPERATOR_CHOICES, default='>')
     is_active = models.BooleanField(default=True)
+    last_triggered = models.DateTimeField(null=True, blank=True)
+    cooldown_minutes = models.IntegerField(default=60) 
+
+    def __str__(self):
+        return f"Alert: {self.label} {self.operator} {self.threshold}"
+    
+
+    

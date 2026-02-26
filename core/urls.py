@@ -19,7 +19,6 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from telemetry.views import *
-from devices.views import  ActivateAccountView
 from devices.views import *
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -39,6 +38,7 @@ from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.conf import settings
 import os
+from telemetry.views import AlertViewSet
 
 def debug_email(request):
     try:
@@ -103,9 +103,28 @@ urlpatterns = [
 
     # --- DEVICE MANAGEMENT (User Dashboard) ---
     path('api/v1/', include(router.urls)),
+    
+
+    # ✅ NEW: Alerting Routes
+    path('api/v1/devices/<str:device_id>/alerts/', AlertViewSet.as_view({'get': 'list', 'post': 'create'})),
+    path('api/v1/alerts/<int:pk>/', AlertViewSet.as_view({'delete': 'destroy'})),
+
+      # 1. Properties (GET/POST)
+    path('api/v1/devices/<str:device_id>/properties/', device_properties, name='device-properties'),
+    
+    # 2. Dispatch a command from the UI (POST)
+    path('api/v1/devices/<str:device_id>/dispatch/', dispatch_command, name='dispatch-command'),
+    
+    # 3. Device polling for commands (GET)
+    path('api/v1/devices/<str:device_id>/poll/', poll_pending_commands, name='poll-commands'),
 
     # --- DATA INGESTION (IoT Hardware) ---
     path('api/v1/ingest/', DataIngestionView.as_view(), name='data-ingest'), # The 'Front Door' for all the IoT Hardware
     path('api/v1/ingest/media/', MediaIngestionView.as_view(), name='media-ingest'),
 
+    # ---dashboard analytics & visualization---
+    path('api/v1/devices/<str:device_id>/history/', device_history, name='device-history'),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+

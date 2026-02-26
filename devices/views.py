@@ -1,7 +1,7 @@
 import logging
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from .models import Device, User
+from .models import Device, User, DeviceProperty, CommandQueue
 from .serializers import DeviceSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
@@ -18,8 +18,13 @@ from django.conf import settings
 from .tokens import email_verification_token
 from django.contrib.auth import get_user_model
 from .utils import send_verification_email
-
+import secrets, hashlib
 from django.contrib.auth.tokens import default_token_generator
+import json
+import paho.mqtt.publish as publish
+from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view
+
 
 User = get_user_model()
 
@@ -100,31 +105,6 @@ class LogoutView(APIView):
         except Exception as e:
             return Response({"error": "Invalid token or already logged out."}, status=status.HTTP_400_BAD_REQUEST)
     
-
-# class RegisterView(generics.CreateAPIView):
-#     serializer_class = RegisterSerializer
-#     permission_classes = [permissions.AllowAny]
-
-#     def perform_create(self, serializer):
-#         user = serializer.save() # is_active is False by default
-        
-#         # 1. Generate Token and UID
-#         uid = urlsafe_base64_encode(force_bytes(user.pk))
-#         token = email_verification_token.make_token(user)
-        
-#         # 2. Build the Verification URL (Points to your React Frontend)
-#         verify_url = f"http://localhost:5173/verify-email/{uid}/{token}/"
-        
-#         # 3. Send the Email
-#         send_mail(
-#             subject="Verify your IIoT Bridge Account",
-#             message=f"Hi {user.username}, welcome to the platform. Verify here: {verify_url}",
-#             from_email="noreply@iotbridge.com",
-#             recipient_list=[user.email],
-#             fail_silently=False,
-#         )
-
-
 
 class RegisterView(APIView):
     # Allow anyone to register (no login required)
@@ -259,3 +239,102 @@ class PasswordResetConfirmView(APIView):
             return Response({"message": "Security String successfully rotated."}, status=status.HTTP_200_OK)
         else:
             return Response({"error": "Invalid or expired reset token."}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+# --- 1. PROPERTY MANAGEMENT (Used by React to define the Digital Twin) ---
+@api_view(['GET', 'POST'])
+def device_properties(request, device_id):
+    device = get_object_or_404(Device, id=device_id)
+
+    if request.method == 'GET':
+        properties = DeviceProperty.objects.filter(device=device)
+        data = [
+            {
+                "id": prop.id,
+                "name": prop.name,
+                "identifier": prop.identifier,
+                "property_type": prop.property_type,
+                "data_type": prop.data_type,
+                "unit": prop.unit,
+                "min_value": prop.min_value,
+                "max_value": prop.max_value
+            } for prop in properties
+        ]
+        return Response(data)
+
+    elif request.method == 'POST':
+        # Create a new property from the React Configuration Tab
+        prop = DeviceProperty.objects.create(
+            device=device,
+            name=request.data.get('name'),
+            identifier=request.data.get('identifier'),
+            property_type=request.data.get('property_type'),
+            data_type=request.data.get('data_type'),
+            unit=request.data.get('unit', ''),
+            min_value=request.data.get('min_value'),
+            max_value=request.data.get('max_value')
+        )
+        return Response({"status": "Property created", "id": prop.id}, status=201)
+
+
+# --- 2. COMMAND DISPATCHER (Used by React to send commands) ---
+@api_view(['POST'])
+def dispatch_command(request, device_id):
+    device = get_object_or_404(Device, id=device_id)
+    identifier = request.data.get('identifier') # e.g., 'fan_speed'
+    target_value = request.data.get('target_value') # e.g., 75
+
+    try:
+        target_property = DeviceProperty.objects.get(device=device, identifier=identifier)
+    except DeviceProperty.DoesNotExist:
+        return Response({"error": "Property not found"}, status=404)
+
+    # 1. Save it to the Mailbox (Command Queue)
+    command = CommandQueue.objects.create(
+        device=device,
+        target_property=target_property,
+        target_value=str(target_value),
+        status='PENDING'
+    )
+
+    # 2. Protocol Routing: If it's MQTT, push it immediately!
+    if getattr(device, 'connection_type', 'HTTPS') == 'MQTT':
+        topic = f"iot/commands/{device.id}"
+        message = json.dumps({
+            "identifier": identifier,
+            "target_value": target_value,
+            "command_id": command.id # The device needs this to acknowledge it later
+        })
+        try:
+            publish.single(topic, payload=message, hostname="localhost", port=1883)
+            # We can mark it DELIVERED (but not EXECUTED yet)
+            command.status = 'DELIVERED' 
+            command.save()
+        except Exception as e:
+            print(f"MQTT Publish Failed: {e}")
+
+    # If it's HTTPS/Gateway, it just stays 'PENDING' until the device polls for it.
+    return Response({"status": "Command queued", "command_id": command.id})
+
+
+# --- 3. COMMAND POLLING (Used by HTTPS/Gateway physical devices) ---
+@api_view(['GET'])
+def poll_pending_commands(request, device_id):
+    device = get_object_or_404(Device, id=device_id)
+
+    # Get all unread mail
+    pending_commands = CommandQueue.objects.filter(device=device, status='PENDING')
+
+    data = [
+        {
+            "command_id": cmd.id,
+            "identifier": cmd.target_property.identifier,
+            "target_value": cmd.target_value
+        } for cmd in pending_commands
+    ]
+
+    # Once the device reads them, mark them as DELIVERED so they aren't fetched twice
+    pending_commands.update(status='DELIVERED')
+
+    return Response({"commands": data})
+

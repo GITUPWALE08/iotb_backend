@@ -75,16 +75,23 @@ INSTALLED_APPS = [
     'anymail',
 ]
 
-
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [os.environ.get('REDIS_URL', 'redis://localhost:6379')],
+# If we are on Render, use Redis. If Local, use Memory.
+if os.environ.get('RENDER'):
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [os.environ.get('REDIS_URL')],
+            },
         },
-    },
-}
-
+    }
+else:
+    # 🚨 FOR LOCAL DEVELOPMENT (No Redis required)
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer"
+        }
+    }
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -129,12 +136,14 @@ REST_FRAMEWORK = {
     # throttling global configuration
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '20/day',      # Unauthenticated users (Register/Login)
-        'user': '1000/day',    # Authenticated users (Dashboard usage)
-        'burst': '10/minute',  # For sensitive endpoints
+        'anon': '500/day',      # Unauthenticated users (Register/Login)
+        'user': '10000/day',    # Authenticated users (Dashboard usage)
+        'burst': '60/minute',  # For sensitive endpoints
+        'ingestion': '6000/minute',  # 🚀 NEW INDUSTRIAL LANE: 6000 requests per minute (100 req/sec)
     }
 }
 ROOT_URLCONF = 'core.urls'

@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 from .models import User, Device
+import secrets
+import hashlib
 
 # class DeviceSerializer(serializers.ModelSerializer):
 #     # Calculated field for frontend convenience
@@ -20,35 +22,52 @@ from .models import User, Device
 #         return "ONLINE" if obj.is_online else "OFFLINE"
 
 
-
 class DeviceSerializer(serializers.ModelSerializer):
+    # 1. Status Field (Keep your existing logic)
     status = serializers.SerializerMethodField(read_only=True)
-    # New field to show the key ONLY when it's first created
-    api_key = serializers.CharField(write_only=True, required=False) 
+    
+    # 2. API Key (read_only = Show it in output, but don't require it in input)
+    api_key = serializers.CharField(read_only=True) 
 
     class Meta:
         model = Device
         fields = [
-            'id', 'name', 'is_active', 'is_online', 
-            'last_seen', 'created_at', 'status',
-            'api_key' # Add this here
+            'id', 
+            'name', 
+            'connection_type',  # ✅ Critical for the Frontend Modal to know if it's MQTT/HTTPS
+            'is_active', 
+            'is_online', 
+            'last_seen', 
+            'created_at', 
+            'status',
+            'api_key'           # ✅ The generated key will appear here
         ]
-        read_only_fields = ['id', 'is_online', 'last_seen', 'created_at']
+        read_only_fields = ['id', 'is_active', 'is_online', 'last_seen', 'created_at']
 
     def get_status(self, obj):
         if not obj.is_active:
             return "DEACTIVATED"
         return "ONLINE" if obj.is_online else "OFFLINE"
-    
-    def to_representation(self, instance):
+
+    def create(self, validated_data):
         """
-        Overriding this to inject the raw API Key into the response
-        ONLY if it exists on the instance (which we will set in the View).
+        Generates the API Key, Hashes it for the DB, 
+        and attaches the Raw Key to the response.
         """
-        representation = super().to_representation(instance)
-        if hasattr(instance, 'raw_api_key'):
-            representation['api_key'] = instance.raw_api_key
-        return representation
+        # A. Generate the Raw Key (sk_...)
+        raw_key = f"sk_{secrets.token_urlsafe(16)}"
+        
+        # B. Hash it (SHA-256) for the database
+        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        validated_data['api_key_hash'] = key_hash
+        
+        # C. Create the Device
+        device = super().create(validated_data)
+        
+        # D. Attach the Raw Key explicitly so it appears in the JSON response
+        device.api_key = raw_key 
+        
+        return device
 
 
 class RegisterSerializer(serializers.ModelSerializer):
