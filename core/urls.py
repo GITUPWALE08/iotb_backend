@@ -107,7 +107,12 @@ urlpatterns = [
 
     # ✅ NEW: Alerting Routes
     path('api/v1/devices/<str:device_id>/alerts/', AlertViewSet.as_view({'get': 'list', 'post': 'create'})),
+    path('api/v1/devices/<str:device_id>/commands/<int:command_id>/cancel/', cancel_command, name='cancel-command'),
     path('api/v1/alerts/<int:pk>/', AlertViewSet.as_view({'delete': 'destroy'})),
+    # Dashboard UI endpoint to view the queue safely
+    path('api/v1/devices/<str:device_id>/queue/', get_command_queue, name='command-queue'),
+    # Update/Delete a specific property
+    path('api/v1/devices/<str:device_id>/properties/<int:property_id>/', device_property_detail, name='property-detail'),
 
       # 1. Properties (GET/POST)
     path('api/v1/devices/<str:device_id>/properties/', device_properties, name='device-properties'),

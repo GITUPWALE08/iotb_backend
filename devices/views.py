@@ -338,3 +338,61 @@ def poll_pending_commands(request, device_id):
 
     return Response({"commands": data})
 
+
+@api_view(['POST'])
+def cancel_command(request, device_id, command_id):
+    """Allows a user to abort a command if it hasn't been executed yet."""
+    command = get_object_or_404(CommandQueue, id=command_id, device__id=device_id)
+    
+    if command.status in ['PENDING', 'DELIVERED']:
+        command.status = 'CANCELLED'
+        command.save()
+        return Response({"status": "Command cancelled successfully."})
+    
+    return Response({"error": f"Too late. Command is already {command.status}."}, status=400)
+
+
+@api_view(['GET'])
+def get_command_queue(request, device_id):
+    """Used by the React UI to see all unresolved commands without changing their status."""
+    device = get_object_or_404(Device, id=device_id)
+    
+    # We want to see commands that are either waiting to be sent OR sent but not yet executed
+    active_commands = CommandQueue.objects.filter(
+        device=device, 
+        status__in=['PENDING', 'DELIVERED']
+    ).order_by('-created_at')
+
+    data = [
+        {
+            "command_id": cmd.id,
+            "identifier": cmd.target_property.identifier,
+            "target_value": cmd.target_value,
+            "status": cmd.status
+        } for cmd in active_commands
+    ]
+
+    return Response({"commands": data})
+
+
+@api_view(['PUT', 'DELETE'])
+def device_property_detail(request, device_id, property_id):
+    """Handles renaming or deleting a specific device property."""
+    prop = get_object_or_404(DeviceProperty, id=property_id, device__id=device_id)
+
+    if request.method == 'DELETE':
+        prop.delete()
+        return Response({"status": "Property deleted."}, status=204)
+
+    elif request.method == 'PUT':
+        # We only allow updating the human-readable name for safety. 
+        # Changing the JSON identifier requires deleting and recreating.
+        new_name = request.data.get('name')
+        if new_name:
+            prop.name = new_name
+            prop.save()
+            return Response({"status": "Property renamed.", "name": prop.name})
+        return Response({"error": "Name is required."}, status=400)
+    
+
+    

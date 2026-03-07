@@ -398,22 +398,22 @@ class AlertViewSet(viewsets.ModelViewSet):
 
 @api_view(['GET'])
 def device_history(request, device_id):
-    """Fetches the last 50 telemetry points for the initial chart load."""
+    device = get_object_or_404(Device, id=device_id)
+    identifier = request.GET.get('identifier') # <--- THE NEW FILTER
     
-    # Grab the last 50 logs for this specific device
-    recent_logs = TelemetryLog.objects.filter(device__id=device_id).order_by('-timestamp')[:50]
+    # Base query
+    logs = TelemetryLog.objects.filter(device=device)
     
-    # Reverse so they go left-to-right (oldest to newest) on the graph
-    chronological_logs = list(recent_logs)[::-1]
+    # If the React app asked for a specific sensor, filter it
+    if identifier:
+        logs = logs.filter(label=identifier)
+        
+    # Grab the latest 50 logs (or whatever limit you prefer)
+    logs = logs.order_by('-timestamp')[:50]
     
-    # Format to match the React frontend's { time, value } expectation
+    # Format and return...
     data = [
-        {
-            "time": log.timestamp.strftime('%I:%M:%S %p'), # Formats to "02:30:15 PM"
-            "value": log.value,
-            "label": log.label
-        }
-        for log in chronological_logs
+        {"time": log.timestamp, "label": log.label, "value": log.value} 
+        for log in reversed(logs) # Reverse so oldest is first for the graph
     ]
-    
     return Response(data)

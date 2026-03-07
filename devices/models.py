@@ -102,7 +102,8 @@ class CommandQueue(models.Model):
         ('PENDING', 'Pending Delivery'),
         ('DELIVERED', 'Delivered to Device'),
         ('EXECUTED', 'Executed & Confirmed'),
-        ('FAILED', 'Failed / Timeout')
+        ('FAILED', 'Failed / Timeout'),
+        ('CANCELLED', 'Cancelled by User')
     ]
     
     device = models.ForeignKey('Device', on_delete=models.CASCADE, related_name='commands')

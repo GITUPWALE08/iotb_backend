@@ -6,6 +6,8 @@ import paho.mqtt.client as mqtt
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+from devices.models import Device, TelemetryLog, CommandQueue
+
 # Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
@@ -26,37 +28,51 @@ def broadcast_live(device_id, data):
     )
 
 def on_message(client, userdata, msg):
-    global data_buffer
     try:
-        data = json.loads(msg.payload.decode())
-        device_id = data.get('device_id')
-        api_key = data.get('api_key')
+        # 1. Extract device ID from the topic (e.g., "iot/telemetry/1234-uuid")
+        device_id = msg.topic.split('/')[-1]
+        device = Device.objects.get(id=device_id)
         
-        # 1. Quick Security & Validation
-        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-        device = Device.objects.filter(id=device_id, api_key_hash=key_hash, is_active=True).first()
+        # 2. Parse the incoming telemetry payload
+        payload = json.loads(msg.payload.decode('utf-8'))
         
-        if device:
-            # 2. INSTANT BROADCAST (Bypasses DB for speed)
-            broadcast_live(device_id, data)
+        print(f"📥 Received data from {device.name}: {payload}")
 
-            # 3. BUFFER FOR DB (B-Tree Optimized Saving)
-            data_buffer.append(TelemetryLog(
+        # Loop through every data point the device just sent
+        for key, value in payload.items():
+            
+            # --- EXISTING LOGIC: Save the raw telemetry ---
+            TelemetryLog.objects.create(
                 device=device,
-                label=data.get('label'),
-                value=data.get('value'),
-                timestamp=data.get('timestamp', django.utils.timezone.now())
-            ))
+                label=key,
+                value=float(value) if isinstance(value, (int, float)) else 0.0 # Adjust based on your current setup
+            )
 
-            # 4. BULK SAVE (Only when buffer is full)
-            if len(data_buffer) >= BUFFER_SIZE:
-                TelemetryLog.objects.bulk_create(data_buffer)
-                data_buffer = [] # Clear buffer
-                print(f"📦 Bulk saved {BUFFER_SIZE} logs to MySQL")
+            # --- NEW LOGIC: Close the Control Loop ---
+            # Check if there are any commands waiting for this specific property
+            pending_commands = CommandQueue.objects.filter(
+                device=device,
+                target_property__identifier=key,
+                status__in=['PENDING', 'DELIVERED']
+            )
 
+            for command in pending_commands:
+                # Does the device's actual reported value match what the user requested?
+                # We convert both to strings to avoid type-mismatch errors (e.g., "1" vs 1)
+                if str(value) == str(command.target_value):
+                    command.mark_executed() # Uses the helper method we defined in models.py
+                    print(f"✅ Loop Closed: Device confirmed '{key}' is now {value}.")
+                else:
+                    print(f"⏳ Still waiting: Requested {command.target_value}, but device reported {value}.")
+
+    except Device.DoesNotExist:
+        print(f"⚠️ Unknown device ID in topic: {msg.topic}")
+    except json.JSONDecodeError:
+        print(f"⚠️ Invalid JSON payload received: {msg.payload}")
     except Exception as e:
-        print(f"❗ MQTT Error: {e}")
+        print(f"❌ Error processing message: {str(e)}")
 
+        
 # ... (Standard MQTT Client setup below) ...
 client = mqtt.Client()
 client.on_message = on_message
