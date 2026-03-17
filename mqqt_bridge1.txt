@@ -1,0 +1,124 @@
+Prompt 8 --- Chart Query API
+Design the optimized chart query API for the telemetry dashboard.
+
+Charts must support:
+
+• historical queries
+• real-time updates
+• maximum 50000 datapoints
+• automatic rollup selection
+• automatic downsampling
+
+Existing system components:
+
+• raw telemetry table
+• rollup tables
+• Redis chart cache
+• WebSocket streaming
+
+TASK
+
+Design the chart query API including:
+
+1. historical query endpoint
+2. rollup selection logic
+3. time-range routing
+4. automatic downsampling algorithm
+5. response format
+6. Redis caching strategy
+7. cache invalidation strategy
+8. chart data compression
+9. pagination strategy
+
+The API must select the correct rollup table automatically.
+
+Example routing:
+
+1 hour → raw telemetry
+24 hours → 1 minute rollup
+7 days → 5 minute rollup
+30 days → 1 hour rollup
+
+Provide Django API code implementing this logic.
+
+
+
+
+Prompt 9 — Frontend Optimization
+Design the optimized chart query API for the telemetry dashboard.
+
+Charts must support:
+
+• historical queries
+• real-time updates
+• maximum 50000 datapoints
+• automatic rollup selection
+• automatic downsampling
+
+Existing system components:
+
+• raw telemetry table
+• rollup tables
+• Redis chart cache
+• WebSocket streaming
+
+TASK
+
+Design the chart query API including:
+
+1. historical query endpoint
+2. rollup selection logic
+3. time-range routing
+4. automatic downsampling algorithm
+5. response format
+6. Redis caching strategy
+7. cache invalidation strategy
+8. chart data compression
+9. pagination strategy
+
+The API must select the correct rollup table automatically.
+
+Example routing:
+
+1 hour → raw telemetry
+24 hours → 1 minute rollup
+7 days → 5 minute rollup
+30 days → 1 hour rollup
+
+Provide Django API code implementing this logic.
+
+
+Prompt 10 — Final Integration Plan
+Using the architecture produced in this project, generate the final system integration roadmap.
+
+The platform includes:
+
+• partitioned telemetry database
+• Redis ingestion queue
+• telemetry rollups
+• indicator engine
+• WebSocket streaming
+• command delivery system
+• chart query API
+
+TASK
+
+Provide a complete integration plan including:
+
+1. migration steps
+2. database schema upgrades
+3. worker deployment strategy
+4. service orchestration
+5. deployment architecture
+6. monitoring strategy
+7. testing methodology
+8. rollback strategy
+
+The plan must ensure that:
+
+• existing features continue working
+• telemetry ingestion is never interrupted
+• deployments are safe for production systems.
+
+Provide a step-by-step implementation roadmap.
+

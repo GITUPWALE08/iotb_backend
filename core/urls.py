@@ -123,6 +123,8 @@ urlpatterns = [
     # 3. Device polling for commands (GET)
     path('api/v1/devices/<str:device_id>/poll/', poll_pending_commands, name='poll-commands'),
 
+    path('api/v1/telemetry/device/<str:device_id>/ohlc/', telemetry_chart_endpoint, name='telemetry-ohlc'),
+
     # --- DATA INGESTION (IoT Hardware) ---
     path('api/v1/ingest/', DataIngestionView.as_view(), name='data-ingest'), # The 'Front Door' for all the IoT Hardware
     path('api/v1/ingest/media/', MediaIngestionView.as_view(), name='media-ingest'),

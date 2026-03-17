@@ -15,6 +15,7 @@ import os
 import dj_database_url
 
 from pathlib import Path
+from celery.schedules import crontab
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -82,6 +83,10 @@ if os.environ.get('RENDER'):
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
                 "hosts": [os.environ.get('REDIS_URL')],
+                # "hosts": [("redis-channels-url.render.com", 6379)],
+                "capacity": 1500,  # Drop messages if the client queue exceeds 1500
+                "expiry": 10,    # Expire unread messages after 10 seconds
+        
             },
         },
     }
@@ -192,7 +197,41 @@ DATABASES = {
     #     },
     # }
 
+# Redis cache
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
 
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+
+CELERY_BEAT_SCHEDULE = {
+    'rollup-raw-to-1m': {
+        'task': 'telemetry.tasks.task_rollup_raw_to_1m',
+        'schedule': crontab(minute='*'), # Runs every minute
+    },
+    'rollup-1m-to-5m': {
+        'task': 'telemetry.tasks.task_rollup_1m_to_5m',
+        'schedule': crontab(minute='*/5'), # Runs every 5 minutes
+    },
+    'rollup-5m-to-1h': {
+        'task': 'telemetry.tasks.task_rollup_5m_to_1h',
+        'schedule': crontab(minute='0'), # Runs at the top of every hour
+    },
+    'rollup-1h-to-1d': {
+        'task': 'telemetry.tasks.task_rollup_1h_to_1d',
+        'schedule': crontab(hour='0', minute='5'), # Runs daily at 00:05
+    },
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

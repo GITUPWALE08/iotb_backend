@@ -1,1 +1,4 @@
 GM6H5N2FJQZ953GSVBU24646
+
+
+Worker Deployment: In your Render configuration (e.g., render.yaml), add a new Background Worker service that executes python manage.py run_ingestion_worker.

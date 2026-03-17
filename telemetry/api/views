@@ -1,0 +1,57 @@
+# telemetry/api/views.py
+from datetime import timedelta
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+@api_view(['GET'])
+def telemetry_chart_endpoint(request, device_id, identifier):
+    start_time = parse_datetime(request.GET.get('start'))
+    end_time = parse_datetime(request.GET.get('end'))
+    time_delta = end_time - start_time
+    
+    # Route based on the total time window to keep points well under 50,000
+    if time_delta <= timedelta(hours=12):
+        model = TelemetryLog # Raw data for ultra-zoomed in view (fallback)
+        res_key = "raw"
+    elif time_delta <= timedelta(days=7):
+        model = TelemetryRollup1Min # Max ~10,080 points
+        res_key = "1m"
+    elif time_delta <= timedelta(days=90):
+        model = TelemetryRollup1Hour # Max ~2,160 points
+        res_key = "1h"
+    else:
+        model = TelemetryRollup1Day
+        res_key = "1d"
+
+    # Fetch with Redis Cache Wrapper
+    data = get_cached_chart_data(
+        device_id, identifier, start_time, end_time, res_key,
+        fetch_callback=lambda: get_safe_chart_data(model, device_id, identifier, start_time, end_time)
+    )
+
+    return Response({"resolution": res_key, "data": data})
+
+# telemetry/api/views.py
+def get_safe_indicator_chart_data(device_id, property_id, start_time, end_time, resolution_key):
+    # Determine models based on router logic
+    rollup_model = get_rollup_model(resolution_key)
+    indicator_model = get_indicator_model(resolution_key)
+    
+    # Perform an optimized Django ORM JOIN against the JSONB indicator table
+    queryset = rollup_model.objects.filter(
+        device_id=device_id,
+        property_id=property_id,
+        bucket__gte=start_time,
+        bucket__lte=end_time
+    ).annotate(
+        # Extract the JSONB dictionary from the related table
+        indicators=models.Subquery(
+            indicator_model.objects.filter(
+                device_id=models.OuterRef('device_id'),
+                property_id=models.OuterRef('property_id'),
+                bucket=models.OuterRef('bucket')
+            ).values('indicators')[:1]
+        )
+    ).order_by('bucket').values('bucket', 'open', 'high', 'low', 'close', 'volume', 'indicators')[:50000]
+    
+    return list(queryset)

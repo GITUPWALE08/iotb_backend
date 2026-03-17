@@ -1,13 +1,14 @@
+from datetime import timezone
 import logging
+from psycopg2 import IntegrityError
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from .models import Device, User, DeviceProperty, CommandQueue
-from .serializers import DeviceSerializer
+from .models import CommandState, Device, User, DeviceProperty, CommandQueue
+from .serializers import DeviceSerializer, RegisterSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 from rest_framework import status, permissions
 from rest_framework import generics, permissions
-from .serializers import RegisterSerializer
 from rest_framework.throttling import ScopedRateThrottle
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
@@ -24,6 +25,8 @@ import json
 import paho.mqtt.publish as publish
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view
+from .queue import enqueue_mqtt_command
+from .tasks import process_command_delivery
 
 
 User = get_user_model()
@@ -56,15 +59,6 @@ class DeviceViewSet(viewsets.ModelViewSet):
         serializer.save(owner=self.request.user)
         logger.info(f"New device registered by user: {self.request.user.username}")
 
-    def destroy(self, request, *args, **kwargs):
-        """
-        Custom delete logic: Log the deletion of hardware.
-        """
-        instance = self.get_object()
-        logger.warning(f"Device {instance.id} being deleted by {request.user}")
-        return super().destroy(request, *args, **kwargs)
-
-    def perform_create(self, serializer):
         """
         1. Generate a secure random key (e.g., sk_live_...)
         2. Hash it for the database (SHA-256)
@@ -83,6 +77,15 @@ class DeviceViewSet(viewsets.ModelViewSet):
         instance.raw_api_key = raw_key
         
         logger.info(f"Device {instance.id} created with new secure key.")
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Custom delete logic: Log the deletion of hardware.
+        """
+        instance = self.get_object()
+        logger.warning(f"Device {instance.id} being deleted by {request.user}")
+        return super().destroy(request, *args, **kwargs)
+        
     
 
 class LogoutView(APIView):
@@ -167,8 +170,6 @@ class ActivateAccountView(APIView):
         else:
             logger.warning(f"Failed activation attempt for UID: {uidb64}")
             return Response({"error": "Activation link is invalid or expired."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        from django.contrib.auth import get_user_model
 
 
 class ResendVerificationView(APIView):
@@ -306,10 +307,7 @@ def dispatch_command(request, device_id):
             "command_id": command.id # The device needs this to acknowledge it later
         })
         try:
-            publish.single(topic, payload=message, hostname="localhost", port=1883)
-            # We can mark it DELIVERED (but not EXECUTED yet)
-            command.status = 'DELIVERED' 
-            command.save()
+            enqueue_mqtt_command(command.id)
         except Exception as e:
             print(f"MQTT Publish Failed: {e}")
 
@@ -393,6 +391,40 @@ def device_property_detail(request, device_id, property_id):
             prop.save()
             return Response({"status": "Property renamed.", "name": prop.name})
         return Response({"error": "Name is required."}, status=400)
-    
+       
 
-    
+class SubmitCommandView(APIView):
+    def post(self, request):
+        device_id = request.data.get('device_id')
+        property_id = request.data.get('property_id')
+        value = request.data.get('value')
+        idempotency_key = request.headers.get('Idempotency-Key')
+        ttl_seconds = request.data.get('ttl', 86400)
+
+        # 1. Idempotency Protection
+        if idempotency_key:
+            existing = CommandQueue.objects.filter(device_id=device_id, idempotency_key=idempotency_key).first()
+            if existing:
+                return Response({"status": "Already queued", "command_id": existing.id}, status=status.HTTP_200_OK)
+
+        # 2. Persist to DB (PENDING)
+        try:
+            command = CommandQueue.objects.create(
+                device_id=device_id,
+                target_property_id=property_id,
+                target_value=str(value),
+                idempotency_key=idempotency_key,
+                expires_at=timezone.now() + timezone.timedelta(seconds=ttl_seconds)
+            )
+        except IntegrityError:
+            return Response({"error": "Duplicate command"}, status=status.HTTP_409_CONFLICT)
+
+        # 3. Push to Redis Command Queue via Celery
+        process_command_delivery.delay(command.id)
+
+        # 4. Return immediately
+        return Response({
+            "status": "Accepted", 
+            "command_id": command.id,
+            "state": CommandState.PENDING
+        }, status=status.HTTP_202_ACCEPTED)

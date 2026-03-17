@@ -1,7 +1,10 @@
+from datetime import timezone
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 import uuid
-
+from django.db import models
+from django.utils import timezone
+from datetime import timedelta
 
 # --- 1. CUSTOM USER ---
 class User(AbstractUser):
@@ -94,35 +97,51 @@ class DeviceProperty(models.Model):
 
 
 # --- 4. COMMAND QUEUE (Mailbox for React -> Device) ---
+class CommandState(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    QUEUED = 'QUEUED', 'Queued in Redis'
+    DELIVERED = 'DELIVERED', 'Delivered to Device'
+    EXECUTED = 'EXECUTED', 'Acknowledged Execution'
+    FAILED = 'FAILED', 'Execution Failed'
+    CANCELLED = 'CANCELLED', 'Cancelled by User'
+    EXPIRED = 'EXPIRED', 'TTL Expired'
+
+
 class CommandQueue(models.Model):
-    """
-    The Mailbox. Tracks commands sent from React to the physical device.
-    """
-    STATUS_CHOICES = [
-        ('PENDING', 'Pending Delivery'),
-        ('DELIVERED', 'Delivered to Device'),
-        ('EXECUTED', 'Executed & Confirmed'),
-        ('FAILED', 'Failed / Timeout'),
-        ('CANCELLED', 'Cancelled by User')
-    ]
-    
+    id = models.BigAutoField(primary_key=True)
     device = models.ForeignKey('Device', on_delete=models.CASCADE, related_name='commands')
-    target_property = models.ForeignKey(DeviceProperty, on_delete=models.CASCADE)
+    target_property = models.ForeignKey('DeviceProperty', on_delete=models.CASCADE)
+    target_value = models.CharField(max_length=255)
     
-    # The value the user wants to set (e.g., "75" for fan speed, "1" for valve open)
-    # Stored as a string so it can hold numbers, booleans, or text
-    target_value = models.CharField(max_length=255) 
+    status = models.CharField(max_length=20, choices=CommandState.choices, default=CommandState.PENDING)
     
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    # Reliability & Tracking
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True)
+    retry_count = models.IntegerField(default=0)
+    max_retries = models.IntegerField(default=5)
     
+    # Timestamps & TTL
     created_at = models.DateTimeField(auto_now_add=True)
-    executed_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField()
 
-    def mark_executed(self):
-        """Helper method to close the loop when the device confirms the action."""
-        self.status = 'EXECUTED'
-        self.executed_at = timezone.now()
-        self.save()
+    class Meta:
+        db_table = 'devices_commandqueue'
+        constraints = [
+            # Prevents duplicate submissions from the UI or API retries
+            models.UniqueConstraint(
+                fields=['device', 'idempotency_key'], 
+                name='unique_command_idempotency',
+                condition=models.Q(idempotency_key__isnull=False)
+            )
+        ]
+        indexes = [
+            # Optimized for HTTPS Polling and TTL Sweepers
+            models.Index(fields=['device', 'status']),
+            models.Index(fields=['status', 'expires_at']),
+        ]
 
-    def __str__(self):
-        return f"Set {self.target_property.identifier} to {self.target_value} [{self.status}]"
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(hours=24) # Default 24h TTL
+        super().save(*args, **kwargs)    

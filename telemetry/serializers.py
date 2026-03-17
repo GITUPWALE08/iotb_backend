@@ -6,11 +6,18 @@ from rest_framework import serializers
 from .models import TelemetryLog, MediaLog, AlertThreshold
 from devices.models import Device
 
-class TelemetryIngestionSerializer(serializers.ModelSerializer):
+class TelemetryIngestSerializer(serializers.ModelSerializer):
+    device_id = serializers.UUIDField()
+
     class Meta:
         model = TelemetryLog
-        fields = ['label', 'value', 'timestamp']
-        extra_kwargs = {'timestamp': {'required': False}} # Make optional
+        fields = ['device_id', 'label', 'value', 'timestamp']
+
+    def validate_value(self, value):
+        # Enforce the documented industrial sanity checks [-1000 to 5000]
+        if not (-1000 <= value <= 5000):
+            raise serializers.ValidationError("Value out of hardware sanity bounds.")
+        return value
 
 class MediaIngestionSerializer(serializers.ModelSerializer):
     class Meta:

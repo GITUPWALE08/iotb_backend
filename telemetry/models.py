@@ -1,24 +1,77 @@
 from django.db import models
-from devices.models import Device
+from devices.models import Device, DeviceProperty
 
 # --- 4. TELEMETRY LOG (Numerical Data) ---
+# telemetry/models.py
+from django.db import models
+
 class TelemetryLog(models.Model):
-    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='telemetry_logs')
-    label = models.CharField(max_length=50, db_index=True) # e.g., 'pressure'
+    device = models.ForeignKey('devices.Device', on_delete=models.CASCADE)
+    property = models.ForeignKey(DeviceProperty, on_delete=models.CASCADE)
+    label = models.CharField(max_length=50)
     value = models.FloatField()
-    
-    # Engineering Accuracy: We store the time the device recorded it
-    timestamp = models.DateTimeField(db_index=True) 
+    timestamp = models.DateTimeField()
     received_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-timestamp']
-        indexes = [
-            # This index is specifically for "Get data for Device X within Time Y"
-            models.Index(fields=['device', 'timestamp']),
+        db_table = 'telemetry_telemetrylog'
+        models.Index(fields=['property', 'timestamp'])
+        # Indexes are handled manually in the migration for the partitioned table
+        managed = False 
 
-            # This index is for filtering by type (e.g., "Show all Temperature sensors")
-            models.Index(fields=['label']),
+class AbstractTelemetryRollup(models.Model):
+    device_id = models.UUIDField()
+    property_id = models.BigIntegerField()
+    label = models.CharField(max_length=50)
+    bucket = models.DateTimeField()
+    
+    open = models.FloatField()
+    high = models.FloatField()
+    low = models.FloatField()
+    close = models.FloatField()
+    volume = models.FloatField()
+
+    class Meta:
+        abstract = True
+
+class TelemetryRollup1Min(AbstractTelemetryRollup):
+    class Meta:
+        db_table = 'telemetry_rollup_1m'
+        constraints = [
+            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_1m_bucket')
+        ]
+        indexes = [
+            models.Index(fields=['device_id', 'property_id', '-bucket']),
+        ]
+
+class TelemetryRollup5Min(AbstractTelemetryRollup):
+    class Meta:
+        db_table = 'telemetry_rollup_5m'
+        constraints = [
+            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_5m_bucket')
+        ]
+        indexes = [
+            models.Index(fields=['device_id', 'property_id', '-bucket']),
+        ]
+
+class TelemetryRollup1Hour(AbstractTelemetryRollup):
+    class Meta:
+        db_table = 'telemetry_rollup_1h'
+        constraints = [
+            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_1h_bucket')
+        ]
+        indexes = [
+            models.Index(fields=['device_id', 'property_id', '-bucket']),
+        ]
+
+class TelemetryRollup1Day(AbstractTelemetryRollup):
+    class Meta:
+        db_table = 'telemetry_rollup_1d'
+        constraints = [
+            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_1d_bucket')
+        ]
+        indexes = [
+            models.Index(fields=['device_id', 'property_id', '-bucket']),
         ]
 
 # --- 5. MEDIA LOG (Audio/Video Files) ---
@@ -54,6 +107,4 @@ class AlertThreshold(models.Model):
 
     def __str__(self):
         return f"Alert: {self.label} {self.operator} {self.threshold}"
-    
-
-    
+       

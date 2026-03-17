@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 from django.db import transaction
 from django.utils import timezone
@@ -10,295 +11,85 @@ from channels.layers import get_channel_layer
 import csv
 import io
 from django.shortcuts import get_object_or_404
-
 from rest_framework import status, viewsets, permissions
 from rest_framework.parsers import MultiPartParser, FormParser
-from .models import TelemetryLog, MediaLog, AlertThreshold
-from .serializers import TelemetryIngestionSerializer, MediaIngestionSerializer, AlertThresholdSerializer
+from .serializers import MediaIngestionSerializer, AlertThresholdSerializer
 from devices.models import Device
 from rest_framework.throttling import ScopedRateThrottle
 from django.core.mail import send_mail
 from django.conf import settings
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view,permission_classes
+from .queue import push_to_queue
+from django.core.cache import cache
+from datetime import timedelta
+from rest_framework.permissions import IsAuthenticated
+from django.utils.dateparse import parse_datetime
+from .models import (
+    TelemetryLog, 
+    TelemetryRollup1Min, 
+    TelemetryRollup5Min, 
+    TelemetryRollup1Hour, 
+    TelemetryRollup1Day,
+    AlertThreshold
+)
+from .indicator_rollup_model import get_indicator_model, get_rollup_model
+from telemetry.api.routing import get_rollup_strategy
+from telemetry.api.queries import execute_chart_query
+from telemetry.utils.cache import get_or_set_chart_cache
+
+from django.db import models
+
 
 
 
 # Professional Logging
 logger = logging.getLogger(__name__)
 
-# class DataIngestionView(APIView):
-#     """
-#     Industrial-grade Data Ingestion Engine:
-#     - Protocol: HTTPS/JSON
-#     - Security: SHA-256 Key Hashing
-#     - Concurrency: Atomic Bulk Inserts
-#     - Live Feed: WebSocket Broadcast
-#     - Safeguards: Payload Thresholds & Value Sanitization
-#     """
-#     authentication_classes = [] 
-#     permission_classes = []
-
-#     # --- CONFIGURABLE THRESHOLDS ---
-#     MAX_POINTS_PER_REQUEST = 500  # Prevents DB flood
-#     VALUE_MIN = -1000.0           # Sanity check for sensor failure
-#     VALUE_MAX = 5000.0
-
-#     def post(self, request):
-#         # 1. Extraction & Initial Validation
-#         api_key = request.headers.get('X-API-KEY')
-#         device_id = request.data.get('device_id')
-
-#         # --- NEW: CSV DETECTOR ---
-#         csv_file = request.FILES.get('file')
-#         if csv_file:
-#             if not csv_file.name.endswith('.csv'):
-#                 return Response({"error": "File must be a CSV."}, status=400)
-            
-#             # Read the file into memory
-#             decoded_file = csv_file.read().decode('utf-8')
-#             io_string = io.StringIO(decoded_file)
-#             reader = csv.DictReader(io_string)
-#             payload = [row for row in reader]
-#         else:
-#             payload = request.data.get('data', [])
-
-#             if not isinstance(payload, list):
-#                 return Response({"error": "Payload 'data' must be a list."}, status=400)
-
-#             if len(payload) > self.MAX_POINTS_PER_REQUEST:
-#                 return Response({
-#                     "error": f"Payload too large. Max {self.MAX_POINTS_PER_REQUEST} points per request."
-#                 }, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
-
-#         # 2. Security: Verify Device Ownership & Status
-#         key_hash = hashlib.sha256(api_key.encode()).hexdigest() if api_key else ""
-#         try:
-#             # B-Tree optimization: Filter by primary ID and hash index
-#             device = Device.objects.get(id=device_id, api_key_hash=key_hash, is_active=True)
-#         except (Device.DoesNotExist, ValueError):
-#             logger.warning(f"Unauthorized access attempt: Device {device_id}")
-#             return Response({"error": "Unauthorized device or invalid API key."}, status=403)
-
-#         # 3. Live Broadcast: Send to WebSockets (Zero-Latency Dashboards)
-#         channel_layer = get_channel_layer()
-#         async_to_sync(channel_layer.group_send)(
-#             f"device_{device_id}",
-#             {
-#                 "type": "live_telemetry",
-#                 "data": payload  # Send raw payload to React for instant update
-#             }
-#         )
-
-#         # 4. Atomic Processing & Buffering
-#         valid_logs = []
-#         try:
-#             with transaction.atomic():
-#                 for entry in payload:
-#                     # Sanitize & Validate via Serializer
-#                     serializer = TelemetryIngestionSerializer(data=entry)
-#                     if serializer.is_valid():
-#                         val = serializer.validated_data['value']
-                        
-#                         # Engineering Sanity Check: Reject impossible physics
-#                         if not (self.VALUE_MIN <= val <= self.VALUE_MAX):
-#                             continue 
-
-#                         valid_logs.append(TelemetryLog(
-#                             device=device,
-#                             label=serializer.validated_data['label'],
-#                             value=val,
-#                             timestamp=serializer.validated_data.get('timestamp', timezone.now())
-#                         ))
-#                     else:
-#                         return Response({"error": "Data format error", "details": serializer.errors}, status=400)
-
-#                 # 5. The B-Tree Win: Bulk Insert
-#                 if valid_logs:
-#                     TelemetryLog.objects.bulk_create(valid_logs)
-                    
-#                     # Update Device Heartbeat (Performance: only update specific fields)
-#                     device.last_seen = timezone.now()
-#                     device.is_online = True
-#                     device.save(update_fields=['last_seen', 'is_online'])
-
-#             return Response({
-#                 "status": "success", 
-#                 "saved_count": len(valid_logs),
-#                 "timestamp": timezone.now()
-#             }, status=status.HTTP_201_CREATED)
-
-#         except Exception as e:
-#             logger.error(f"Database Ingestion Failure: {str(e)}")
-#             return Response({"error": "Internal database error."}, status=500)
-        
 class DataIngestionView(APIView):
-    """
-    Industrial-grade Data Ingestion Engine:
-    - Protocol: HTTPS/JSON
-    - Security: SHA-256 Key Hashing
-    - Concurrency: Atomic Bulk Inserts
-    - Live Feed: WebSocket Broadcast
-    - Safeguards: Payload Thresholds & Value Sanitization
-    """
     authentication_classes = [] 
     permission_classes = []
-
-    # --- CONFIGURABLE THRESHOLDS ---
-    MAX_POINTS_PER_REQUEST = 500  # Prevents DB flood
-    VALUE_MIN = -1000.0           # Sanity check for sensor failure
-    VALUE_MAX = 5000.0
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ingestion'
 
     def post(self, request):
-        # 1. Extraction & Robust API Key Search
-        # Check Body first (Simulators/ESP32), then Headers (Gateways)
-        api_key = request.data.get('api_key') or request.headers.get('X-API-KEY')
-        device_id = request.data.get('device_id')
+        payload = request.data
+        device_id = payload.get("device_id")
+        api_key = payload.get("api_key") or request.headers.get("X-API-KEY")
 
-        # 2. Payload Normalization (Handle Single Point vs Bulk vs CSV)
-        csv_file = request.FILES.get('file')
-        if csv_file:
-            if not csv_file.name.endswith('.csv'):
-                return Response({"error": "File must be a CSV."}, status=400)
-            decoded_file = csv_file.read().decode('utf-8')
-            io_string = io.StringIO(decoded_file)
-            reader = csv.DictReader(io_string)
-            payload = [row for row in reader]
-        else:
-            # Check if it's a single point (Simulators/Simple Sensors)
-            if 'value' in request.data and 'label' in request.data:
-                payload = [request.data] # Wrap it in a list
-            else:
-                # Check if it's a Bulk Push (Gateways)
-                payload = request.data.get('data', [])
+        if not device_id or not api_key:
+            return Response({"error": "Missing device_id or api_key"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not isinstance(payload, list):
-            return Response({"error": "Invalid payload format. Expected list or single entry."}, status=400)
-
-        # 3. Security: Verify Device Ownership & Status
-        key_hash = hashlib.sha256(api_key.encode()).hexdigest() if api_key else ""
-        try:
-            device = Device.objects.get(id=device_id, api_key_hash=key_hash, is_active=True)
-        except (Device.DoesNotExist, ValueError):
-            logger.warning(f"Unauthorized access attempt: Device {device_id}")
-            return Response({"error": "Unauthorized device or invalid API key."}, status=403)
-
-        # 4. Live Broadcast (Send raw payload to Dashboard)
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f"device_{device_id}",
-            {
-                "type": "live_telemetry",
-                "data": payload[0] if len(payload) == 1 else payload 
-            }
-        )
-
-        # 5. Atomic Processing & Buffering
-        valid_logs = []
-        alerts_triggered = []
-        try:
-            with transaction.atomic():
-                for entry in payload:
-                    serializer = TelemetryIngestionSerializer(data=entry)
-                    if serializer.is_valid():
-                        val = serializer.validated_data['value']
-                        lbl = serializer.validated_data['label']
-                        
-                        # Engineering Sanity Check
-                        if not (self.VALUE_MIN <= val <= self.VALUE_MAX):
-                            continue 
-
-                        valid_logs.append(TelemetryLog(
-                            device=device,
-                            label=lbl,
-                            value=val,
-                            timestamp=serializer.validated_data.get('timestamp', timezone.now())
-                        ))
-
-                        self.check_alerts(device, lbl, val, alerts_triggered) # Check for alerts
-                    else:
-                        # For single points, fail fast. For bulk, you might want to log & skip.
-                        if len(payload) == 1:
-                            return Response(serializer.errors, status=400)
-
-                if valid_logs:
-                    TelemetryLog.objects.bulk_create(valid_logs)
-                    
-                    # Update Heartbeat
-                    device.last_seen = timezone.now()
-                    device.is_online = True
-                    device.save(update_fields=['last_seen', 'is_online'])
-
-            return Response({
-                "status": "ACK", 
-                "saved_count": len(valid_logs)
-            }, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            logger.error(f"Database Ingestion Failure: {str(e)}")
-            return Response({"error": "Internal database error."}, status=500)
-
-
-    def check_alerts(self, device, label, value, triggered_list):
-        """
-        Checks if the incoming value violates any AlertThreshold rules.
-        """
-        # Get active rules for this specific label (e.g., 'temperature')
-        rules = AlertThreshold.objects.filter(
-            device=device, 
-            parameter=label, 
-            is_active=True
-        )
-
-        for rule in rules:
-            is_breach = False
-            
-            if rule.operator == '>':
-                if rule.max_value is not None and value > rule.max_value:
-                    is_breach = True
-            elif rule.operator == '<':
-                if rule.min_value is not None and value < rule.min_value:
-                    is_breach = True
-            elif rule.operator == '=':
-                if rule.min_value is not None and abs(value - rule.min_value) < 0.01:
-                    is_breach = True
-
-            if is_breach:
-                # Cooldown Check
-                now = timezone.now()
-                if rule.last_triggered:
-                    delta = now - rule.last_triggered
-                    if delta.total_seconds() < (rule.cooldown_minutes * 60):
-                        continue # Skip (In cooldown)
-
-                # TRIGGER ALERT
-                self.send_alert_email(device, rule, value)
-                
-                # Update Rule State
-                rule.last_triggered = now
-                rule.save(update_fields=['last_triggered'])
-                triggered_list.append(rule.id)
-
-    def send_alert_email(self, device, rule, value):
-        subject = f"🚨 ALERT: {device.name} - {rule.parameter.upper()} Critical"
-        message = (
-            f"Device: {device.name}\n"
-            f"Metric: {rule.parameter}\n"
-            f"Current Value: {value}\n"
-            f"Threshold: {rule.operator} {rule.max_value or rule.min_value}\n\n"
-            f"Please check the dashboard immediately."
-        )
+        # 1. Fast API Key Hash Authentication
+        key_hash = hashlib.sha256(api_key.encode('utf-8')).hexdigest()
         
-        try:
-            send_mail(
-                subject,
-                message,
-                settings.DEFAULT_FROM_EMAIL,
-                [device.owner.email],
-                fail_silently=True,
-            )
-            logger.info(f"Alert email sent to {device.owner.email}")
-        except Exception as e:
-            logger.error(f"Failed to send alert email: {e}")
+        # Optimize lookup by checking existence only
+        device_exists = Device.objects.filter(
+            id=device_id, 
+            api_key_hash=key_hash, 
+            is_active=True
+        ).exists()
+
+        if not device_exists:
+            return Response({"error": "Invalid credentials or inactive device"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # 2. Payload Format Determination
+        payload_type = "single"
+        if "data" in payload and "base_time" in payload:
+            payload_type = "gateway"
+        elif "data" in payload:
+            payload_type = "bulk"
+
+        # 3. Queue Push (Decoupled execution)
+        queue_payload = {
+            "type": payload_type,
+            "device_id": device_id,
+            "raw_payload": payload
+        }
+        push_to_queue(queue_payload)
+
+        # 4. Immediate Acknowledgement
+        return Response({"status": "ACK", "message": "Payload queued for processing"}, status=status.HTTP_202_ACCEPTED)        
+    
 
 class MediaIngestionView(APIView):
     """
@@ -395,6 +186,51 @@ class AlertViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
+class MultiDeviceChartAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        POST is used to accommodate large lists of device_ids and property_ids.
+        Payload: { "devices": ["id1", "id2"], "properties": ["p1"], "start": "...", "end": "..." }
+        """
+        device_ids = [str(d) for d in request.data.get('devices', [])]
+        property_ids = [str(p) for p in request.data.get('properties', [])]
+        start_time = parse_datetime(request.data.get('start'))
+        end_time = parse_datetime(request.data.get('end'))
+
+        if not all([device_ids, property_ids, start_time, end_time]):
+            return Response({"error": "Missing parameters"}, status=400)
+
+        # 1. Routing Strategy
+        model, resolution, ttl = get_rollup_strategy(start_time, end_time)
+
+        # 2. Query & Caching
+        def fetch_data():
+            return execute_chart_query(model, resolution, device_ids, property_ids, start_time, end_time)
+
+        chart_data = get_or_set_chart_cache(
+            device_ids, property_ids, start_time, end_time, resolution, ttl, fetch_data
+        )
+
+        # 3. Find latest timestamp across all datasets for WS synchronization
+        latest_ts = 0
+        for devs in chart_data.values():
+            for props in devs.values():
+                if props.get("timestamps"):
+                    latest_ts = max(latest_ts, props["timestamps"][-1])
+
+        # 4. Construct Response with WS Metadata
+        return Response({
+            "metadata": {
+                "resolution": resolution,
+                "latest_timestamp": latest_ts,
+                "ws_channels": [f"device_{d_id}" for d_id in device_ids],
+                "point_limit_applied": resolution == 'raw'
+            },
+            "data": chart_data
+        })
+
 
 @api_view(['GET'])
 def device_history(request, device_id):
@@ -417,3 +253,143 @@ def device_history(request, device_id):
         for log in reversed(logs) # Reverse so oldest is first for the graph
     ]
     return Response(data)
+
+
+
+def get_safe_chart_data(model_class, device_id, label, start_time, end_time):
+    """Safely retrieves OHLCV data enforcing the 50,000 point UI constraint."""
+    # Note: If routing to the raw TelemetryLog, 'bucket' should be 'timestamp'
+    time_field = 'timestamp' if model_class == TelemetryLog else 'bucket'
+    
+    queryset = model_class.objects.filter(
+        device_id=device_id,
+        label=label,
+        **{f"{time_field}__gte": start_time},
+        **{f"{time_field}__lte": end_time}
+    ).order_by(time_field)
+    
+    # If it's a rollup table, fetch the pre-calculated OHLCV values
+    if model_class != TelemetryLog:
+        return list(queryset.values('bucket', 'open', 'high', 'low', 'close', 'volume')[:50000])
+    
+    # If it's the raw table, just fetch timestamp and value
+    return list(queryset.values('timestamp', 'value')[:50000])
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def telemetry_chart_endpoint(request, id):
+    """
+    Replaces the dangerous historical GET endpoint.
+    Routes queries to the correct aggregation table based on the time window.
+    """
+    device_id = id
+    identifier = request.GET.get('identifier')
+    start_time_str = request.GET.get('start')
+    end_time_str = request.GET.get('end')
+
+    if not all([identifier, start_time_str, end_time_str]):
+        return Response({"error": "Missing required parameters: identifier, start, end"}, status=400)
+
+    start_time = parse_datetime(start_time_str)
+    end_time = parse_datetime(end_time_str)
+    time_delta = end_time - start_time
+    
+    # 1. QUERY ROUTING LOGIC
+    if time_delta <= timedelta(hours=12):
+        model = TelemetryLog
+        res_key = "raw"
+    elif time_delta <= timedelta(days=7):
+        model = TelemetryRollup1Min
+        res_key = "1m"
+    elif time_delta <= timedelta(days=90):
+        model = TelemetryRollup1Hour
+        res_key = "1h"
+    else:
+        model = TelemetryRollup1Day
+        res_key = "1d"
+
+    # 2. REDIS CACHING LOGIC
+    cache_key = f"chart:{device_id}:{identifier}:{start_time.timestamp()}:{end_time.timestamp()}:{res_key}"
+    cached_payload = cache.get(cache_key)
+    
+    if cached_payload:
+        data = json.loads(cached_payload)
+    else:
+        # Cache miss: Execute the safe DB query callback
+        data = get_safe_chart_data(model, device_id, identifier, start_time, end_time)
+        # Cache for 60 seconds to prevent DB spam on rapid UI reloads
+        cache.set(cache_key, json.dumps(data), timeout=60)
+
+    return Response({
+        "resolution": res_key, 
+        "data": data
+    })
+
+
+def fetch_chart_data(model, device_id, identifier, start_time, end_time):
+    time_field = 'timestamp' if model == TelemetryLog else 'bucket'
+    return list(model.objects.filter(
+        device_id=device_id,
+        label=identifier,
+        **{f"{time_field}__gte": start_time},
+        **{f"{time_field}__lte": end_time}
+    ).order_by(time_field).values('open', 'high', 'low', 'close', 'volume', time_field)[:50000])
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def chart_data_router(request, device_id, identifier):
+    start_time = parse_datetime(request.GET.get('start'))
+    end_time = parse_datetime(request.GET.get('end'))
+    time_delta = end_time - start_time
+    
+    # 4. QUERY ROUTING
+    if time_delta <= timedelta(hours=12):
+        model, res_key, ttl = TelemetryLog, "raw", 1
+    elif time_delta <= timedelta(days=7):
+        model, res_key, ttl = TelemetryRollup1Min, "1m", 60
+    elif time_delta <= timedelta(days=30):
+        model, res_key, ttl = TelemetryRollup5Min, "5m", 360
+    elif time_delta <= timedelta(days=90):
+        model, res_key, ttl = TelemetryRollup1Hour, "1h", 3600
+    else:
+        model, res_key, ttl = TelemetryRollup1Day, "1d", 86400
+
+    # 3. REDIS CACHE LAYER
+    cache_key = f"chart:{device_id}:{identifier}:{start_time.timestamp()}:{end_time.timestamp()}:{res_key}"
+    cached_payload = cache.get(cache_key)
+    
+    if cached_payload:
+        data = json.loads(cached_payload)
+    else:
+        data = fetch_chart_data(model, device_id, identifier, start_time, end_time)
+        # Cache expires based on the resolution bucket size
+        cache.set(cache_key, json.dumps(data), timeout=ttl)
+
+    return Response({"resolution": res_key, "data": data})
+
+
+def get_safe_indicator_chart_data(device_id, property_id, start_time, end_time, resolution_key):
+    # Determine models based on router logic
+    rollup_model = get_rollup_model(resolution_key)
+    indicator_model = get_indicator_model(resolution_key)
+    
+    # Perform an optimized Django ORM JOIN against the JSONB indicator table
+    queryset = rollup_model.objects.filter(
+        device_id=device_id,
+        property_id=property_id,
+        bucket__gte=start_time,
+        bucket__lte=end_time
+    ).annotate(
+        # Extract the JSONB dictionary from the related table
+        indicators=models.Subquery(
+            indicator_model.objects.filter(
+                device_id=models.OuterRef('device_id'),
+                property_id=models.OuterRef('property_id'),
+                bucket=models.OuterRef('bucket')
+            ).values('indicators')[:1]
+        )
+    ).order_by('bucket').values('bucket', 'open', 'high', 'low', 'close', 'volume', 'indicators')[:50000]
+    
+    return list(queryset)
+
