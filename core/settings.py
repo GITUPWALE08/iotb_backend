@@ -233,6 +233,10 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# MQTT Broker Configuration
+MQTT_BROKER_URL = os.environ.get('MQTT_BROKER_URL', 'localhost')
+MQTT_BROKER_PORT = int(os.environ.get('MQTT_BROKER_PORT', 1883))
+
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
