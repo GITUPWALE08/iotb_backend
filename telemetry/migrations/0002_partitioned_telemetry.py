@@ -33,8 +33,8 @@ class Migration(migrations.Migration):
 
                 received_at TIMESTAMPTZ DEFAULT NOW(),
 
-                PRIMARY KEY (id, timestamp)
-                
+                PRIMARY KEY (id, timestamp),
+
                 CONSTRAINT fk_telemetry_device
                 FOREIGN KEY (device_id)
                 REFERENCES devices_device(id)
