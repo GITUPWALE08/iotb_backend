@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
 
             CREATE TABLE telemetry_telemetrylog (
 
-                id BIGSERIAL PRIMARY KEY,
+                id BIGSERIAL,
 
                 device_id UUID NOT NULL,
 
