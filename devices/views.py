@@ -112,6 +112,7 @@ class LogoutView(APIView):
 class RegisterView(APIView):
     # Allow anyone to register (no login required)
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -131,6 +132,7 @@ class RegisterView(APIView):
             except Exception as e:
                 # Log this error in production (Sentry/CloudWatch)
                 print(f"Email sending failed: {e}")
+                logger.error(f"Email sending failed for {user.email}: {e}")
                 # We still return 201 because the user WAS created. 
                 # They can use the "Resend Verification" button later.
             
@@ -174,7 +176,7 @@ class ActivateAccountView(APIView):
 
 class ResendVerificationView(APIView):
     # This should be open to unauthenticated users
-    permission_classes = [] 
+    permission_classes = [permissions.AllowAny] 
 
     def post(self, request):
         email = request.data.get('email')
@@ -190,7 +192,7 @@ class ResendVerificationView(APIView):
         
 
 class RequestPasswordResetView(APIView):
-    permission_classes = [] # Publicly accessible
+    permission_classes = [permissions.AllowAny] # Publicly accessible
 
     def post(self, request):
         email = request.data.get('email')
@@ -202,20 +204,25 @@ class RequestPasswordResetView(APIView):
             # Point this to your Vercel frontend URL
             reset_link = f"{settings.FRONTEND_URL}/password-reset-confirm/{uid}/{token}/"
             
-            # Send the branded email (similar to verification)
-            send_mail(
-                'Reset Your EastCoast Bridge Security String',
-                f'Use this link to reset your password: {reset_link}',
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
-                fail_silently=False,
-            )
+            try:
+                # Send the branded email (similar to verification)
+                send_mail(
+                    'Reset Your EastCoast Bridge Security String',
+                    f'Use this link to reset your password: {reset_link}',
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                # Log this error in production (Sentry/CloudWatch)
+                print(f"Email sending failed: {e}")
+                logger.error(f"Email sending failed for {user.email}: {e}")
             
         return Response({"message": "If an account exists, a reset link has been sent."}, status=200)
     
 
 class PasswordResetConfirmView(APIView):
-    permission_classes = []  # Publicly accessible
+    permission_classes = [permissions.AllowAny]  # Publicly accessible
 
     def post(self, request):
         uidb64 = request.data.get('uid')
@@ -342,7 +349,7 @@ def cancel_command(request, device_id, command_id):
     """Allows a user to abort a command if it hasn't been executed yet."""
     command = get_object_or_404(CommandQueue, id=command_id, device__id=device_id)
     
-    if command.status in ['PENDING', 'DELIVERED']:
+    if command.status in ['PENDING', 'QUEUED', 'DELIVERED']:
         command.status = 'CANCELLED'
         command.save()
         return Response({"status": "Command cancelled successfully."})
@@ -352,21 +359,34 @@ def cancel_command(request, device_id, command_id):
 
 @api_view(['GET'])
 def get_command_queue(request, device_id):
-    """Used by the React UI to see all unresolved commands without changing their status."""
+    """
+    Used by the React UI to see command queue activity without changing command state.
+
+    Default behavior returns unresolved commands only.
+    Pass `include_resolved=true` to include EXECUTED/FAILED/CANCELLED/EXPIRED/etc.
+    """
     device = get_object_or_404(Device, id=device_id)
-    
-    # We want to see commands that are either waiting to be sent OR sent but not yet executed
-    active_commands = CommandQueue.objects.filter(
-        device=device, 
-        status__in=['PENDING', 'DELIVERED']
-    ).order_by('-created_at')
+
+    include_resolved = str(request.query_params.get('include_resolved', 'false')).lower() in [
+        '1', 'true', 'yes', 'y'
+    ]
+    limit = int(request.query_params.get('limit', 50))
+
+    qs = CommandQueue.objects.filter(device=device).order_by('-created_at')
+    if not include_resolved:
+        # We want to see commands that are either waiting to be sent OR sent but not yet executed.
+        qs = qs.filter(status__in=['PENDING', 'QUEUED', 'DELIVERED'])
+
+    active_commands = qs[:limit]
 
     data = [
         {
             "command_id": cmd.id,
             "identifier": cmd.target_property.identifier,
             "target_value": cmd.target_value,
-            "status": cmd.status
+            "status": cmd.status,
+            "created_at": cmd.created_at.isoformat(),
+            "updated_at": cmd.updated_at.isoformat(),
         } for cmd in active_commands
     ]
 

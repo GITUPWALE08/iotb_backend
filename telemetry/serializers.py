@@ -28,11 +28,40 @@ class MediaIngestionSerializer(serializers.ModelSerializer):
 class AlertThresholdSerializer(serializers.ModelSerializer):
     class Meta:
         model = AlertThreshold
-        fields = ['id', 'parameter', 'operator', 'min_value', 'max_value', 'cooldown_minutes', 'is_active', 'last_triggered']
-        read_only_fields = ['id', 'last_triggered']
+        fields = [
+            'id',
+            'device',
+            'parameter',
+            'operator',
+            'min_value',
+            'max_value',
+            'cooldown_minutes',
+            'is_active',
+            'last_triggered',
+            'notification_channel',
+            'notification_target',
+        ]
+        read_only_fields = ['id', 'device', 'last_triggered']
 
     def create(self, validated_data):
         # We need to manually inject the 'device' from the URL
         device_id = self.context['view'].kwargs['device_id']
         device = Device.objects.get(id=device_id)
         return AlertThreshold.objects.create(device=device, **validated_data)
+
+    def validate(self, attrs):
+        channel = attrs.get('notification_channel', 'EMAIL')
+        target = attrs.get('notification_target') or ''
+
+        if not target.strip():
+            raise serializers.ValidationError({
+                "notification_target": "This field is required for the selected notification channel."
+            })
+
+        if channel == 'EMAIL' and '@' not in target:
+            raise serializers.ValidationError({
+                "notification_target": "Please enter a valid email address."
+            })
+
+        # For SMS we only ensure it's non-empty; actual formatting can be enforced later.
+        return attrs

@@ -2,3 +2,10 @@ GM6H5N2FJQZ953GSVBU24646
 
 
 Worker Deployment: In your Render configuration (e.g., render.yaml), add a new Background Worker service that executes python manage.py run_ingestion_worker.
+
+
+new credentials for temperature sensor(MQTT BROKER)
+UUID: 97864583-48c7-4265-a125-58775650098b
+API_KEY: sk_UtmwNQ1Q96XgTHAhv6A-fw
+mqtt_broker: mqtt://localhost:1883
+topic: iot/telemetry/97864583-48c7-4265-a125-58775650098b

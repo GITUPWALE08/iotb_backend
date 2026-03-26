@@ -44,7 +44,18 @@ class TelemetryConsumer(AsyncWebsocketConsumer):
         """
         # We send highly compressed JSON to minimize network bandwidth
         await self.send(text_data=json.dumps({
-            "t": "tick",
-            "d": event["device_id"],
-            "p": event["payload"] # The telemetry data array
+            "live_data": event["payload"] # The telemetry data array
+        }))
+    
+    async def command_acknowledgment(self, event):
+        """
+        Pushes command acknowledgment updates to the WebSocket.
+        Triggered when hardware acknowledges command execution.
+        """
+        await self.send(text_data=json.dumps({
+            "type": "command_ack",
+            "command_id": event["command_id"],
+            "status": event["status"],
+            "device_id": event["device_id"],
+            "timestamp": event["timestamp"]
         }))

@@ -5,6 +5,8 @@ from datetime import timezone
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.core.mail import send_mail
+from django.conf import settings
 
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -249,6 +251,7 @@ class Command(BaseCommand):
 
             alert_map[key].append(alert)
 
+        # Store (alert, triggered_value) so we can notify after DB update.
         triggered = []
         current_time = now()
 
@@ -284,13 +287,44 @@ class Command(BaseCommand):
                 if fire:
 
                     alert.last_triggered = current_time
-                    triggered.append(alert)
-
-                    # async email dispatch here if needed
+                    triggered.append((alert, rec.value))
 
         if triggered:
 
             AlertThreshold.objects.bulk_update(
-                triggered,
+                [a for a, _ in triggered],
                 ["last_triggered"]
             )
+
+            # Best-effort notifications. Never let the ingestion worker crash.
+            for alert, triggered_value in triggered:
+                try:
+                    if not alert.notification_target:
+                        continue
+
+                    subject = f"Watchdog alert: {alert.parameter}"
+                    message = (
+                        f"Device parameter '{alert.parameter}' triggered.\n\n"
+                        f"Operator: {alert.operator}\n"
+                        f"Triggered value: {triggered_value}\n"
+                        f"Device: {alert.device.name}\n"
+                        f"Cooldown: {alert.cooldown_minutes} minutes\n"
+                    )
+
+                    if alert.notification_channel == "EMAIL":
+                        send_mail(
+                            subject=subject,
+                            message=message,
+                            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                            recipient_list=[alert.notification_target],
+                            fail_silently=True,
+                        )
+                    elif alert.notification_channel == "SMS":
+                        # SMS delivery isn't implemented in this repo yet.
+                        # Keep the wiring so you can attach Twilio/other SMS later.
+                        self.stdout.write(
+                            f"[ALERT-SMS-STUB] {alert.device.id} -> {alert.notification_target}: {subject}"
+                        )
+
+                except Exception as e:
+                    self.stdout.write(f"[ALERT-NOTIFY-ERROR] {e}")

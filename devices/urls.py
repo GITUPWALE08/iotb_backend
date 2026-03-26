@@ -13,5 +13,4 @@ urlpatterns = [
     # 3. Device polling for commands (GET)
     path('devices/<str:device_id>/poll/', poll_pending_commands, name='poll-commands'),
 ]
-]
 

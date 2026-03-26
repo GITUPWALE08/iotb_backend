@@ -96,15 +96,29 @@ class AlertThreshold(models.Model):
         ('<', 'Less Than'),
         ('=', 'Equals'),
     ]
+    NOTIFICATION_CHANNEL_CHOICES = [
+        ('EMAIL', 'Email'),
+        ('SMS', 'SMS'),
+    ]
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='alerts')
     parameter = models.CharField(max_length=50) # e.g., 'temperature'
     min_value = models.FloatField(null=True, blank=True)
     max_value = models.FloatField(null=True, blank=True)
     operator = models.CharField(max_length=1, choices=OPERATOR_CHOICES, default='>')
+    notification_channel = models.CharField(
+        max_length=10,
+        choices=NOTIFICATION_CHANNEL_CHOICES,
+        default='EMAIL'
+    )
+    notification_target = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text='Email address or phone number, depending on notification channel.'
+    )
     is_active = models.BooleanField(default=True)
     last_triggered = models.DateTimeField(null=True, blank=True)
     cooldown_minutes = models.IntegerField(default=60) 
 
     def __str__(self):
-        return f"Alert: {self.label} {self.operator} {self.threshold}"
+        return f"Alert: {self.parameter} {self.operator}"
        

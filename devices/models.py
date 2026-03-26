@@ -123,7 +123,7 @@ class CommandQueue(models.Model):
     # Timestamps & TTL
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    expires_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'devices_commandqueue'

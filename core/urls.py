@@ -19,7 +19,9 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from telemetry.views import *
+from telemetry.ai_views import AIReportView
 from devices.views import *
+from devices.api.ack import CommandAcknowledgementView
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.http import JsonResponse
@@ -122,8 +124,14 @@ urlpatterns = [
     
     # 3. Device polling for commands (GET)
     path('api/v1/devices/<str:device_id>/poll/', poll_pending_commands, name='poll-commands'),
+    
+    # 4. Hardware acknowledgment endpoint (POST)
+    path('api/v1/devices/<str:device_id>/ack/', CommandAcknowledgementView.as_view(), name='command-ack'),
 
     path('api/v1/telemetry/device/<str:device_id>/ohlc/', telemetry_chart_endpoint, name='telemetry-ohlc'),
+    
+    # AI Report Generation
+    path('api/v1/ai/generate-report/', AIReportView.as_view(), name='ai-generate-report'),
 
     # --- DATA INGESTION (IoT Hardware) ---
     path('api/v1/ingest/', DataIngestionView.as_view(), name='data-ingest'), # The 'Front Door' for all the IoT Hardware

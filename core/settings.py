@@ -13,10 +13,15 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 
 import dj_database_url
-
+import certifi
 from pathlib import Path
 from celery.schedules import crontab
 
+
+
+# Fix Windows TLS certificate path
+os.environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,19 +31,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-_ou(c*bppis1u$!eu8+*c737psa_bkw03r$9w-zc*15cigg$dl'
+SECRET_KEY = "sk-apikey"
 
 # This sets DEBUG to False if you are on Render, and True otherwise.
 DEBUG = not os.environ.get('RENDER')
 
-EMAIL_BACKEND = "anymail.backends.mailgun.EmailBackend"
-
-ANYMAIL = {
-    "MAILGUN_API_KEY": os.environ.get("MAILGUN_API_KEY"),
-    "MAILGUN_SENDER_DOMAIN": os.environ.get("MAILGUN_DOMAIN"),
-}
-
-DEFAULT_FROM_EMAIL = os.environ.get("MAILGUN_FROM_EMAIL")
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.environ.get('EMAIL_HOST')
+EMAIL_PORT = 587
+EMAIL_HOST_USER = 'resend'
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "postmaster@sandboxf8eb86c158ba407aa6cf65c14dee2cb9.mailgun.org")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 EMAIL_TIMEOUT = 30
@@ -178,41 +180,44 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='sqlite:///db.sqlite3',
-        conn_max_age=600
+        default=os.environ.get(
+            'DATABASE_URL',
+            'postgresql://iot_user:wale%400811@127.0.0.1:5432/iot_bridge_db'
+        ),
+        conn_max_age=600,
+        conn_health_checks=True,
     )
-}
-
-    # 'default': {
-    #     'ENGINE': 'dj_db_conn_pool.backends.mysql', # using connection pool instead of mysql 
-    #     'NAME': 'iot_bridge_db',   # You must create this schema in MySQL first
-    #     'USER': 'root',            # Your MySQL username
-    #     'PASSWORD': 'mysqlrootpassword', # The password you set during MySQL installation
-    #     'HOST': '127.0.0.1',       # Localhost
-    #     'PORT': '3306',            # Default MySQL port
-    #     'CONN_MAX_AGE': 60,  # Keep the connection alive for 60 seconds
-    #     'OPTIONS': {
-    #         'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-    #         'charset': 'utf8mb4',
-    #     },
-    # }
+} 
 
 # Redis cache
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+if os.environ.get('RENDER'):
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": os.environ.get('REDIS_URL'),
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
         }
     }
-}
+    CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL')
+
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": "redis://127.0.0.1:6379/1",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
+        }
+    }
+    CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', "redis://127.0.0.1:6379/0")
 
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
 CELERY_BEAT_SCHEDULE = {
     'rollup-raw-to-1m': {
