@@ -145,31 +145,22 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# This decorator is CRITICAL. It stops Django from blocking the HTML form POST request.
+@method_decorator(csrf_exempt, name='dispatch')
 class ActivateAccountView(APIView):
-    """
-    The "Key" to the Fortress (Bot-Proof Edition)
-    - GET: Returns a simple HTML button (defeats email scanners).
-    - POST: Consumes the token and activates the user.
-    """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, uidb64, token):
-        # Step 1: The browser or email scanner makes a GET request.
-        # We DO NOT touch the database here. We just return a visual button.
+        # Using print() instead of logger so Render CANNOT hide it.
+        print(f"==== [ACTIVATION] GET Request Received for UID: {uidb64} ====")
         
         html_content = f"""
         <!DOCTYPE html>
         <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Account Activation</title>
-            </head>
-            <body style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
                 <h2>Almost there!</h2>
-                <p style="color: #94a3b8; margin-bottom: 30px;">Click the button below to verify your email address and activate your account.</p>
-                
                 <form method="POST" action="/api/v1/auth/activate/{uidb64}/{token}/">
-                    <button type="submit" style="padding: 12px 24px; background-color: #2563eb; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.2s;">
+                    <button type="submit" style="padding: 12px 24px; background-color: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
                         Verify & Activate
                     </button>
                 </form>
@@ -179,45 +170,41 @@ class ActivateAccountView(APIView):
         return HttpResponse(html_content)
 
     def post(self, request, uidb64, token):
-        # Step 2: The human clicks the button, triggering the POST request.
+        print(f"==== [ACTIVATION] POST Request Received for UID: {uidb64} ====")
+        
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            print(f"==== [ACTIVATION] User Found in DB: {user.email} ====")
+        except Exception as e:
+            print(f"==== [ACTIVATION] ERROR finding user: {e} ====")
             user = None
 
-        # 2. Validate Token
         if user is not None and email_verification_token.check_token(user, token):
+            print("==== [ACTIVATION] Token is VALID. Executing SQL Update... ====")
             
-            # Log the state BEFORE the update
-            logger.info(f"Attempting to activate UID {uid}. Current state: active={user.is_active}")
-            
-            # Force the database update directly at the SQL level (bypasses custom save methods)
+            # Force the SQL update and capture exactly how many rows were changed
             updated_count = User.objects.filter(pk=uid).update(
-                is_active=True,
+                is_active=True, 
                 is_email_verified=True
             )
             
-            if updated_count > 0:
-                logger.info(f"Database confirmed write. Account activated successfully: {user.username}")
-                return Response({"message": "Account activated successfully!"}, status=status.HTTP_200_OK)
-            else:
-                logger.error(f"FATAL: Database refused to update UID {uid}.")
-                return Response({"error": "Database write failed."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        else:
-            logger.warning(f"Failed activation attempt for UID: {uidb64}")
+            print(f"==== [ACTIVATION] SQL Rows Updated: {updated_count} ====")
             
-            error_html = """
-            <!DOCTYPE html>
-            <html>
-                <body style="font-family: system-ui, sans-serif; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                    <h2 style="color: #ef4444;">Activation Failed</h2>
-                    <p style="color: #94a3b8;">This link is invalid or has already been used.</p>
-                </body>
-            </html>
+            success_html = """
+            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
+            </body>
             """
-            return HttpResponse(error_html, status=status.HTTP_400_BAD_REQUEST)
+            return HttpResponse(success_html)
+        else:
+            print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
+            error_html = """
+            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                <h2 style="color: #ef4444;">Activation Failed / Expired</h2>
+            </body>
+            """
+            return HttpResponse(error_html, status=400)
 
 
 # class ActivateAccountView(APIView):
