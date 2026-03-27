@@ -153,7 +153,7 @@ class ActivateAccountView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    def get(self, request, uidb64, token):
+    def post(self, request, uidb64, token):
         try:
             # 1. Decode the User ID
             uid = force_str(urlsafe_base64_decode(uidb64))
