@@ -158,97 +158,232 @@ class ActivateAccountView(APIView):
         print(f"==== [ACTIVATION] GET Request Received for UID: {uidb64} ====")
         print(f"==== [ACTIVATION] Full Token: {token} ====")
         
-        # DIRECT ACTIVATION ON GET - No form needed
+        # DIRECT ACTIVATION ON GET - Idempotent approach
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
-            print(f"==== [ACTIVATION] User Found in DB: {user.email} (Current active: {user.is_active}) ====")
-            print(f"==== [ACTIVATION] User PK: {user.pk} ====")
+            print(f"==== [ACTIVATION] User Found: {user.email} (Active: {user.is_active}, Verified: {user.is_email_verified}) ====")
         except Exception as e:
             print(f"==== [ACTIVATION] ERROR finding user: {e} ====")
-            user = None
+            return self._error_response("Invalid activation link")
 
-        if user is not None:
-            print(f"==== [ACTIVATION] About to check token for user {user.email} ====")
-            print(f"==== [ACTIVATION] User is_active: {user.is_active} ====")
-            print(f"==== [ACTIVATION] User is_email_verified: {user.is_email_verified} ====")
+        # Check token validity
+        token_valid = email_verification_token.check_token(user, token)
+        print(f"==== [ACTIVATION] Token Valid: {token_valid} ====")
+        
+        if not token_valid:
+            return self._error_response(
+                "Activation link has expired or is invalid.",
+                "Please request a new verification email below."
+            )
+
+        # SUCCESS SCENARIOS
+        if user.is_active and user.is_email_verified:
+            print("==== [ACTIVATION] USER ALREADY ACTIVATED - Showing success page ====")
+            return self._success_response(user, already_active=True)
+        
+        # ACTIVATE THE USER
+        print("==== [ACTIVATION] ACTIVATING USER ACCOUNT... ====")
+        try:
+            user.is_active = True
+            user.is_email_verified = True
+            user.save(update_fields=['is_active', 'is_email_verified'])
             
-            # Check token validity with detailed logging
-            try:
-                token_valid = email_verification_token.check_token(user, token)
-                print(f"==== [ACTIVATION] Token check result: {token_valid} ====")
-            except Exception as token_error:
-                print(f"==== [ACTIVATION] Token check ERROR: {token_error} ====")
-                token_valid = False
+            # Backup SQL update
+            updated_count = User.objects.filter(pk=uid).update(
+                is_active=True, 
+                is_email_verified=True
+            )
             
-            if token_valid:
-                print("==== [ACTIVATION] Token is VALID. Updating user... ====")
-                
-                try:
-                    # SIMPLIFIED APPROACH: Direct update without transaction atomic
-                    # This prevents PgBouncer transaction issues
-                    
-                    # 1. Update the Python object
-                    user.is_active = True
-                    user.is_email_verified = True
-                    user.save(update_fields=['is_active', 'is_email_verified'])
-                    
-                    print(f"==== [ACTIVATION] User object updated: is_active={user.is_active} ====")
-                    
-                    # 2. Force raw SQL update as backup (removed atomic wrapper)
-                    updated_count = User.objects.filter(pk=uid).update(
-                        is_active=True, 
-                        is_email_verified=True
-                    )
-                    
-                    print(f"==== [ACTIVATION] Raw SQL updated: {updated_count} rows ====")
-                    
-                    # 3. Final verification - read from database
-                    user.refresh_from_db()
-                    print(f"==== [ACTIVATION] FINAL VERIFICATION: is_active={user.is_active}, is_email_verified={user.is_email_verified} ====")
+            print(f"==== [ACTIVATION] SQL Updated: {updated_count} rows ====")
+            
+            # Verify activation
+            user.refresh_from_db()
+            print(f"==== [ACTIVATION] FINAL STATUS: Active={user.is_active}, Verified={user.is_email_verified} ====")
+            
+            return self._success_response(user, already_active=False)
+            
+        except Exception as db_error:
+            print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
+            return self._error_response(
+                "Database error during activation.",
+                "Please try again or contact support."
+            )
 
-                    success_html = f"""
-                    <!DOCTYPE html>
-                    <html>
-                        <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                            <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
-                            <p style="color: #8b949e; margin-top: 20px;">
-                                Welcome to EastCoast Bridge, {user.username}!
-                            </p>
-                            <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-                                <a href="/login" style="color: #00D2FF; text-decoration: none; font-weight: bold;">
-                                    Go to Login →
-                                </a>
-                            </p>
-                        </body>
-                    </html>
-                    """
-                    return HttpResponse(success_html)
-
-                except Exception as db_error:
-                    print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
-                    print(f"==== [ACTIVATION] ERROR TYPE: {type(db_error).__name__} ====")
-                    return HttpResponse(f"Database error during activation: {str(db_error)}", status=500)
-
-            else:
-                print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
-                print("==== [ACTIVATION] Possible causes:")
-                print("   • Token expired (24-hour limit)")
-                print("   • Token already used")
-                print("   • User data changed after token generation")
-                print("   • Token tampered with")
-
-        error_html = """
+    def _success_response(self, user, already_active=False):
+        """Generate consistent success response"""
+        if already_active:
+            title = "Account Already Activated"
+            message = f"Welcome back to EastCoast Bridge, {user.username}!"
+            submessage = "Your account is already active and ready to use."
+        else:
+            title = "Account Activated Successfully! 🎉"
+            message = f"Welcome to EastCoast Bridge, {user.username}!"
+            submessage = "Your account has been activated and is ready to use."
+        
+        success_html = f"""
         <!DOCTYPE html>
         <html>
-            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                <h2 style="color: #ef4444;">Activation Failed / Expired</h2>
-                <p style="color: #8b949e;">The activation link is invalid or has expired.</p>
-                <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">
-                    <a href="/api/v1/auth/resend-verification/" style="color: #00D2FF; text-decoration: none;">
-                        Resend Verification Email
+            <head>
+                <style>
+                    body {{
+                        font-family: system-ui, -apple-system, sans-serif;
+                        text-align: center;
+                        padding-top: 10vh;
+                        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                        color: white;
+                        margin: 0;
+                        min-height: 100vh;
+                    }}
+                    .container {{
+                        max-width: 500px;
+                        margin: 0 auto;
+                        padding: 40px 20px;
+                        background: rgba(255, 255, 255, 0.1);
+                        border-radius: 16px;
+                        backdrop-filter: blur(10px);
+                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+                    }}
+                    .title {{
+                        color: #10b981;
+                        font-size: 28px;
+                        font-weight: 600;
+                        margin-bottom: 16px;
+                    }}
+                    .message {{
+                        color: #8b949e;
+                        font-size: 16px;
+                        margin-bottom: 24px;
+                        line-height: 1.5;
+                    }}
+                    .submessage {{
+                        color: #6b7280;
+                        font-size: 14px;
+                        margin-bottom: 32px;
+                    }}
+                    .login-btn {{
+                        display: inline-block;
+                        background: #00D2FF;
+                        color: #000;
+                        padding: 12px 24px;
+                        text-decoration: none;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        font-size: 14px;
+                        transition: all 0.2s ease;
+                    }}
+                    .login-btn:hover {{
+                        background: #00a8e6;
+                        transform: translateY(-2px);
+                        box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3);
+                    }}
+                    .resend-btn {{
+                        display: inline-block;
+                        background: transparent;
+                        color: #00D2FF;
+                        padding: 8px 16px;
+                        text-decoration: none;
+                        border: 1px solid #00D2FF;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        margin-top: 16px;
+                        transition: all 0.2s ease;
+                    }}
+                    .resend-btn:hover {{
+                        background: #00D2FF;
+                        color: #000;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="title">{title}</div>
+                    <div class="message">{message}</div>
+                    <div class="submessage">{submessage}</div>
+                    
+                    <a href="/login" class="login-btn">
+                        Go to Login →
                     </a>
-                </p>
+                    
+                    <a href="/api/v1/auth/resend-verification/" class="resend-btn">
+                        Need New Verification Email?
+                    </a>
+                </div>
+            </body>
+        </html>
+        """
+        return HttpResponse(success_html)
+
+    def _error_response(self, message, submessage=""):
+        """Generate consistent error response"""
+        error_html = f"""
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <style>
+                    body {{
+                        font-family: system-ui, -apple-system, sans-serif;
+                        text-align: center;
+                        padding-top: 10vh;
+                        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                        color: white;
+                        margin: 0;
+                        min-height: 100vh;
+                    }}
+                    .container {{
+                        max-width: 500px;
+                        margin: 0 auto;
+                        padding: 40px 20px;
+                        background: rgba(255, 255, 255, 0.1);
+                        border-radius: 16px;
+                        backdrop-filter: blur(10px);
+                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+                    }}
+                    .title {{
+                        color: #ef4444;
+                        font-size: 28px;
+                        font-weight: 600;
+                        margin-bottom: 16px;
+                    }}
+                    .message {{
+                        color: #8b949e;
+                        font-size: 16px;
+                        margin-bottom: 24px;
+                        line-height: 1.5;
+                    }}
+                    .submessage {{
+                        color: #6b7280;
+                        font-size: 14px;
+                        margin-bottom: 32px;
+                    }}
+                    .resend-btn {{
+                        display: inline-block;
+                        background: transparent;
+                        color: #00D2FF;
+                        padding: 12px 24px;
+                        text-decoration: none;
+                        border: 1px solid #00D2FF;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        font-size: 14px;
+                        transition: all 0.2s ease;
+                    }}
+                    .resend-btn:hover {{
+                        background: #00D2FF;
+                        color: #000;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="title">Activation Failed</div>
+                    <div class="message">{message}</div>
+                    <div class="submessage">{submessage}</div>
+                    
+                    <a href="/api/v1/auth/resend-verification/" class="resend-btn">
+                        Request New Verification Email
+                    </a>
+                </div>
             </body>
         </html>
         """
