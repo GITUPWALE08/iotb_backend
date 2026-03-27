@@ -186,24 +186,25 @@ class ActivateAccountView(APIView):
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             user = None
 
+        # 2. Validate Token
         if user is not None and email_verification_token.check_token(user, token):
-            user.is_active = True
-            user.is_email_verified = True # Uncomment if you have this custom field
-            user.save()
             
-            logger.info(f"Account activated successfully: {user.username}")
+            # Log the state BEFORE the update
+            logger.info(f"Attempting to activate UID {uid}. Current state: active={user.is_active}")
             
-            # Return a success HTML page instead of JSON so the browser looks nice
-            success_html = """
-            <!DOCTYPE html>
-            <html>
-                <body style="font-family: system-ui, sans-serif; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                    <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
-                    <p style="color: #94a3b8;">You can now close this window and log in to the application.</p>
-                </body>
-            </html>
-            """
-            return HttpResponse(success_html)
+            # Force the database update directly at the SQL level (bypasses custom save methods)
+            updated_count = User.objects.filter(pk=uid).update(
+                is_active=True,
+                is_email_verified=True
+            )
+            
+            if updated_count > 0:
+                logger.info(f"Database confirmed write. Account activated successfully: {user.username}")
+                return Response({"message": "Account activated successfully!"}, status=status.HTTP_200_OK)
+            else:
+                logger.error(f"FATAL: Database refused to update UID {uid}.")
+                return Response({"error": "Database write failed."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         else:
             logger.warning(f"Failed activation attempt for UID: {uidb64}")
             
