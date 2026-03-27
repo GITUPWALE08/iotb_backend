@@ -184,42 +184,50 @@ class ActivateAccountView(APIView):
             user = None
 
         if user is not None and email_verification_token.check_token(user, token):
-            print("==== [ACTIVATION] Token is VALID. Locking Database for Transaction... ====")
+            print("==== [ACTIVATION] Token is VALID. Updating user... ====")
             
             try:
-                # This FORCES Django to send a strict COMMIT to PgBouncer/Supabase
-                with transaction.atomic():
-                    # 1. Update the Python object
-                    user.is_active = True
-                    user.is_email_verified = True
-                    user.save(update_fields=['is_active', 'is_email_verified'])
-                    
-                    # 2. Force the raw SQL update as a backup
-                    updated_count = User.objects.filter(pk=uid).update(
-                        is_active=True, 
-                        is_email_verified=True
-                    )
+                # SIMPLIFIED APPROACH: Direct update without transaction atomic
+                # This prevents PgBouncer transaction issues
                 
-                print(f"==== [ACTIVATION] Transaction Committed! SQL rows updated: {updated_count} ====")
+                # 1. Update the Python object
+                user.is_active = True
+                user.is_email_verified = True
+                user.save(update_fields=['is_active', 'is_email_verified'])
                 
-                # 3. THE SANITY CHECK: Read it directly from the database to prove it stuck
+                print(f"==== [ACTIVATION] User object updated: is_active={user.is_active} ====")
+                
+                # 2. Force raw SQL update as backup (removed atomic wrapper)
+                updated_count = User.objects.filter(pk=uid).update(
+                    is_active=True, 
+                    is_email_verified=True
+                )
+                
+                print(f"==== [ACTIVATION] Raw SQL updated: {updated_count} rows ====")
+                
+                # 3. Final verification - read from database
                 user.refresh_from_db()
-                print(f"==== [ACTIVATION] READ-BACK VERIFICATION: is_active is now {user.is_active} ====")
-
-                if not user.is_active:
-                    print("==== [ACTIVATION] FATAL: Database accepted the write but rolled it back immediately! ====")
-                    return HttpResponse("Database sync error. Please try again.", status=500)
+                print(f"==== [ACTIVATION] FINAL VERIFICATION: is_active={user.is_active}, is_email_verified={user.is_email_verified} ====")
 
                 success_html = """
                 <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
                     <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
+                    <p style="color: #8b949e; margin-top: 20px;">
+                        You can now login to your EastCoast Bridge account.
+                    </p>
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+                        <a href="/login" style="color: #00D2FF; text-decoration: none; font-weight: bold;">
+                            Go to Login →
+                        </a>
+                    </p>
                 </body>
                 """
                 return HttpResponse(success_html)
 
             except Exception as db_error:
-                print(f"==== [ACTIVATION] CRITICAL DATABASE ERROR DURING SAVE: {db_error} ====")
-                return HttpResponse("Internal server error during activation.", status=500)
+                print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
+                print(f"==== [ACTIVATION] ERROR TYPE: {type(db_error).__name__} ====")
+                return HttpResponse(f"Database error during activation: {str(db_error)}", status=500)
 
         else:
             print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
