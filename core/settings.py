@@ -36,14 +36,21 @@ SECRET_KEY = "sk-apikey"
 # This sets DEBUG to False if you are on Render, and True otherwise.
 DEBUG = not os.environ.get('RENDER')
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST')
-EMAIL_PORT = 587
-EMAIL_HOST_USER = 'resend'
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "postmaster@sandboxf8eb86c158ba407aa6cf65c14dee2cb9.mailgun.org")
-SERVER_EMAIL = DEFAULT_FROM_EMAIL
+# ANYMAIL & RESEND CONFIGURATION
+ANYMAIL = {
+    "RESEND_API_KEY": os.environ.get("RESEND_API_KEY"),
+}
 
-EMAIL_TIMEOUT = 30
+# Route all Django emails through Resend
+EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+
+# The email address your emails will come from
+# Note: This MUST be a domain you have verified in your Resend dashboard!
+EMAIL_HOST = os.environ.get('EMAIL_HOST')
+EMAIL_HOST_USER = 'resend'
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL")
+
+EMAIL_TIMEOUT = 60
 
 
 ALLOWED_HOSTS = [
