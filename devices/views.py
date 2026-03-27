@@ -188,7 +188,7 @@ class ActivateAccountView(APIView):
 
         if user is not None and email_verification_token.check_token(user, token):
             user.is_active = True
-            # user.is_email_verified = True # Uncomment if you have this custom field
+            user.is_email_verified = True # Uncomment if you have this custom field
             user.save()
             
             logger.info(f"Account activated successfully: {user.username}")
