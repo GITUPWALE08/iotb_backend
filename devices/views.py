@@ -156,77 +156,103 @@ class ActivateAccountView(APIView):
     def get(self, request, uidb64, token):
         # Using print() instead of logger so Render CANNOT hide it.
         print(f"==== [ACTIVATION] GET Request Received for UID: {uidb64} ====")
+        print(f"==== [ACTIVATION] Full Token: {token} ====")
         
         # DIRECT ACTIVATION ON GET - No form needed
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
             print(f"==== [ACTIVATION] User Found in DB: {user.email} (Current active: {user.is_active}) ====")
+            print(f"==== [ACTIVATION] User PK: {user.pk} ====")
         except Exception as e:
             print(f"==== [ACTIVATION] ERROR finding user: {e} ====")
             user = None
 
-        if user is not None and email_verification_token.check_token(user, token):
-            print("==== [ACTIVATION] Token is VALID. Updating user... ====")
+        if user is not None:
+            print(f"==== [ACTIVATION] About to check token for user {user.email} ====")
+            print(f"==== [ACTIVATION] User is_active: {user.is_active} ====")
+            print(f"==== [ACTIVATION] User is_email_verified: {user.is_email_verified} ====")
             
+            # Check token validity with detailed logging
             try:
-                # SIMPLIFIED APPROACH: Direct update without transaction atomic
-                # This prevents PgBouncer transaction issues
+                token_valid = email_verification_token.check_token(user, token)
+                print(f"==== [ACTIVATION] Token check result: {token_valid} ====")
+            except Exception as token_error:
+                print(f"==== [ACTIVATION] Token check ERROR: {token_error} ====")
+                token_valid = False
+            
+            if token_valid:
+                print("==== [ACTIVATION] Token is VALID. Updating user... ====")
                 
-                # 1. Update the Python object
-                user.is_active = True
-                user.is_email_verified = True
-                user.save(update_fields=['is_active', 'is_email_verified'])
-                
-                print(f"==== [ACTIVATION] User object updated: is_active={user.is_active} ====")
-                
-                # 2. Force raw SQL update as backup (removed atomic wrapper)
-                updated_count = User.objects.filter(pk=uid).update(
-                    is_active=True, 
-                    is_email_verified=True
-                )
-                
-                print(f"==== [ACTIVATION] Raw SQL updated: {updated_count} rows ====")
-                
-                # 3. Final verification - read from database
-                user.refresh_from_db()
-                print(f"==== [ACTIVATION] FINAL VERIFICATION: is_active={user.is_active}, is_email_verified={user.is_email_verified} ====")
+                try:
+                    # SIMPLIFIED APPROACH: Direct update without transaction atomic
+                    # This prevents PgBouncer transaction issues
+                    
+                    # 1. Update the Python object
+                    user.is_active = True
+                    user.is_email_verified = True
+                    user.save(update_fields=['is_active', 'is_email_verified'])
+                    
+                    print(f"==== [ACTIVATION] User object updated: is_active={user.is_active} ====")
+                    
+                    # 2. Force raw SQL update as backup (removed atomic wrapper)
+                    updated_count = User.objects.filter(pk=uid).update(
+                        is_active=True, 
+                        is_email_verified=True
+                    )
+                    
+                    print(f"==== [ACTIVATION] Raw SQL updated: {updated_count} rows ====")
+                    
+                    # 3. Final verification - read from database
+                    user.refresh_from_db()
+                    print(f"==== [ACTIVATION] FINAL VERIFICATION: is_active={user.is_active}, is_email_verified={user.is_email_verified} ====")
 
-                success_html = f"""
-                <!DOCTYPE html>
-                <html>
-                    <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                        <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
-                        <p style="color: #8b949e; margin-top: 20px;">
-                            Welcome to EastCoast Bridge, {user.username}!
-                        </p>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-                            <a href="/login" style="color: #00D2FF; text-decoration: none; font-weight: bold;">
-                                Go to Login →
-                            </a>
-                        </p>
-                    </body>
-                </html>
-                """
-                return HttpResponse(success_html)
+                    success_html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                        <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                            <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
+                            <p style="color: #8b949e; margin-top: 20px;">
+                                Welcome to EastCoast Bridge, {user.username}!
+                            </p>
+                            <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+                                <a href="/login" style="color: #00D2FF; text-decoration: none; font-weight: bold;">
+                                    Go to Login →
+                                </a>
+                            </p>
+                        </body>
+                    </html>
+                    """
+                    return HttpResponse(success_html)
 
-            except Exception as db_error:
-                print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
-                print(f"==== [ACTIVATION] ERROR TYPE: {type(db_error).__name__} ====")
-                return HttpResponse(f"Database error during activation: {str(db_error)}", status=500)
+                except Exception as db_error:
+                    print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
+                    print(f"==== [ACTIVATION] ERROR TYPE: {type(db_error).__name__} ====")
+                    return HttpResponse(f"Database error during activation: {str(db_error)}", status=500)
 
-        else:
-            print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
-            error_html = """
-            <!DOCTYPE html>
-            <html>
-                <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                    <h2 style="color: #ef4444;">Activation Failed / Expired</h2>
-                    <p style="color: #8b949e;">The activation link is invalid or has expired.</p>
-                </body>
-            </html>
-            """
-            return HttpResponse(error_html, status=400)
+            else:
+                print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
+                print("==== [ACTIVATION] Possible causes:")
+                print("   • Token expired (24-hour limit)")
+                print("   • Token already used")
+                print("   • User data changed after token generation")
+                print("   • Token tampered with")
+
+        error_html = """
+        <!DOCTYPE html>
+        <html>
+            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                <h2 style="color: #ef4444;">Activation Failed / Expired</h2>
+                <p style="color: #8b949e;">The activation link is invalid or has expired.</p>
+                <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">
+                    <a href="/api/v1/auth/resend-verification/" style="color: #00D2FF; text-decoration: none;">
+                        Resend Verification Email
+                    </a>
+                </p>
+            </body>
+        </html>
+        """
+        return HttpResponse(error_html, status=400)
 
     def post(self, request, uidb64, token):
         print(f"==== [ACTIVATION] POST Request Received for UID: {uidb64} ====")
