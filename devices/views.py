@@ -16,6 +16,7 @@ from .tokens import email_verification_token
 from django.core.mail import send_mail
 from django.utils.encoding import force_str
 from django.conf import settings
+from django.http import HttpResponse
 from .tokens import email_verification_token
 from django.contrib.auth import get_user_model
 from .utils import send_verification_email
@@ -146,32 +147,106 @@ class RegisterView(APIView):
 
 class ActivateAccountView(APIView):
     """
-    The "Key" to the Fortress:
-    - Decodes the UID from the email link.
-    - Validates the one-time token.
-    - Activates the user account.
+    The "Key" to the Fortress (Bot-Proof Edition)
+    - GET: Returns a simple HTML button (defeats email scanners).
+    - POST: Consumes the token and activates the user.
     """
     permission_classes = [permissions.AllowAny]
 
+    def get(self, request, uidb64, token):
+        # Step 1: The browser or email scanner makes a GET request.
+        # We DO NOT touch the database here. We just return a visual button.
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Account Activation</title>
+            </head>
+            <body style="font-family: system-ui, -apple-system, sans-serif; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                <h2>Almost there!</h2>
+                <p style="color: #94a3b8; margin-bottom: 30px;">Click the button below to verify your email address and activate your account.</p>
+                
+                <form method="POST" action="/api/v1/auth/activate/{uidb64}/{token}/">
+                    <button type="submit" style="padding: 12px 24px; background-color: #2563eb; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.2s;">
+                        Verify & Activate
+                    </button>
+                </form>
+            </body>
+        </html>
+        """
+        return HttpResponse(html_content)
+
     def post(self, request, uidb64, token):
+        # Step 2: The human clicks the button, triggering the POST request.
         try:
-            # 1. Decode the User ID
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             user = None
 
-        # 2. Validate Token
         if user is not None and email_verification_token.check_token(user, token):
             user.is_active = True
-            user.is_email_verified = True
+            # user.is_email_verified = True # Uncomment if you have this custom field
             user.save()
             
             logger.info(f"Account activated successfully: {user.username}")
-            return Response({"message": "Account activated successfully!"}, status=status.HTTP_200_OK)
+            
+            # Return a success HTML page instead of JSON so the browser looks nice
+            success_html = """
+            <!DOCTYPE html>
+            <html>
+                <body style="font-family: system-ui, sans-serif; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                    <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
+                    <p style="color: #94a3b8;">You can now close this window and log in to the application.</p>
+                </body>
+            </html>
+            """
+            return HttpResponse(success_html)
         else:
             logger.warning(f"Failed activation attempt for UID: {uidb64}")
-            return Response({"error": "Activation link is invalid or expired."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            error_html = """
+            <!DOCTYPE html>
+            <html>
+                <body style="font-family: system-ui, sans-serif; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                    <h2 style="color: #ef4444;">Activation Failed</h2>
+                    <p style="color: #94a3b8;">This link is invalid or has already been used.</p>
+                </body>
+            </html>
+            """
+            return HttpResponse(error_html, status=status.HTTP_400_BAD_REQUEST)
+
+
+# class ActivateAccountView(APIView):
+#     """
+#     The "Key" to the Fortress:
+#     - Decodes the UID from the email link.
+#     - Validates the one-time token.
+#     - Activates the user account.
+#     """
+#     permission_classes = [permissions.AllowAny]
+
+#     def post(self, request, uidb64, token):
+#         try:
+#             # 1. Decode the User ID
+#             uid = force_str(urlsafe_base64_decode(uidb64))
+#             user = User.objects.get(pk=uid)
+#         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+#             user = None
+
+#         # 2. Validate Token
+#         if user is not None and email_verification_token.check_token(user, token):
+#             user.is_active = True
+#             user.is_email_verified = True
+#             user.save()
+            
+#             logger.info(f"Account activated successfully: {user.username}")
+#             return Response({"message": "Account activated successfully!"}, status=status.HTTP_200_OK)
+#         else:
+#             logger.warning(f"Failed activation attempt for UID: {uidb64}")
+#             return Response({"error": "Activation link is invalid or expired."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ResendVerificationView(APIView):
