@@ -16,6 +16,8 @@ from .tokens import email_verification_token
 from django.core.mail import send_mail
 from django.utils.encoding import force_str
 from django.conf import settings
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
 from .tokens import email_verification_token
 from django.contrib.auth import get_user_model
