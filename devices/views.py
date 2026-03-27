@@ -14,6 +14,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 from .tokens import email_verification_token
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils.encoding import force_str
 from django.conf import settings
 from django.utils.decorators import method_decorator
@@ -177,28 +178,49 @@ class ActivateAccountView(APIView):
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
-            print(f"==== [ACTIVATION] User Found in DB: {user.email} ====")
+            print(f"==== [ACTIVATION] User Found in DB: {user.email} (Current active: {user.is_active}) ====")
         except Exception as e:
             print(f"==== [ACTIVATION] ERROR finding user: {e} ====")
             user = None
 
         if user is not None and email_verification_token.check_token(user, token):
-            print("==== [ACTIVATION] Token is VALID. Executing SQL Update... ====")
+            print("==== [ACTIVATION] Token is VALID. Locking Database for Transaction... ====")
             
-            # Force the SQL update and capture exactly how many rows were changed
-            updated_count = User.objects.filter(pk=uid).update(
-                is_active=True, 
-                is_email_verified=True
-            )
-            
-            print(f"==== [ACTIVATION] SQL Rows Updated: {updated_count} ====")
-            
-            success_html = """
-            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
-            </body>
-            """
-            return HttpResponse(success_html)
+            try:
+                # This FORCES Django to send a strict COMMIT to PgBouncer/Supabase
+                with transaction.atomic():
+                    # 1. Update the Python object
+                    user.is_active = True
+                    user.is_email_verified = True
+                    user.save(update_fields=['is_active', 'is_email_verified'])
+                    
+                    # 2. Force the raw SQL update as a backup
+                    updated_count = User.objects.filter(pk=uid).update(
+                        is_active=True, 
+                        is_email_verified=True
+                    )
+                
+                print(f"==== [ACTIVATION] Transaction Committed! SQL rows updated: {updated_count} ====")
+                
+                # 3. THE SANITY CHECK: Read it directly from the database to prove it stuck
+                user.refresh_from_db()
+                print(f"==== [ACTIVATION] READ-BACK VERIFICATION: is_active is now {user.is_active} ====")
+
+                if not user.is_active:
+                    print("==== [ACTIVATION] FATAL: Database accepted the write but rolled it back immediately! ====")
+                    return HttpResponse("Database sync error. Please try again.", status=500)
+
+                success_html = """
+                <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                    <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
+                </body>
+                """
+                return HttpResponse(success_html)
+
+            except Exception as db_error:
+                print(f"==== [ACTIVATION] CRITICAL DATABASE ERROR DURING SAVE: {db_error} ====")
+                return HttpResponse("Internal server error during activation.", status=500)
+
         else:
             print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
             error_html = """
@@ -207,7 +229,7 @@ class ActivateAccountView(APIView):
             </body>
             """
             return HttpResponse(error_html, status=400)
-
+        
 
 # class ActivateAccountView(APIView):
 #     """
