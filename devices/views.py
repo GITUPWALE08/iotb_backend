@@ -157,20 +157,76 @@ class ActivateAccountView(APIView):
         # Using print() instead of logger so Render CANNOT hide it.
         print(f"==== [ACTIVATION] GET Request Received for UID: {uidb64} ====")
         
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                <h2>Almost there!</h2>
-                <form method="POST" action="/api/v1/auth/activate/{uidb64}/{token}/">
-                    <button type="submit" style="padding: 12px 24px; background-color: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
-                        Verify & Activate
-                    </button>
-                </form>
-            </body>
-        </html>
-        """
-        return HttpResponse(html_content)
+        # DIRECT ACTIVATION ON GET - No form needed
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            print(f"==== [ACTIVATION] User Found in DB: {user.email} (Current active: {user.is_active}) ====")
+        except Exception as e:
+            print(f"==== [ACTIVATION] ERROR finding user: {e} ====")
+            user = None
+
+        if user is not None and email_verification_token.check_token(user, token):
+            print("==== [ACTIVATION] Token is VALID. Updating user... ====")
+            
+            try:
+                # SIMPLIFIED APPROACH: Direct update without transaction atomic
+                # This prevents PgBouncer transaction issues
+                
+                # 1. Update the Python object
+                user.is_active = True
+                user.is_email_verified = True
+                user.save(update_fields=['is_active', 'is_email_verified'])
+                
+                print(f"==== [ACTIVATION] User object updated: is_active={user.is_active} ====")
+                
+                # 2. Force raw SQL update as backup (removed atomic wrapper)
+                updated_count = User.objects.filter(pk=uid).update(
+                    is_active=True, 
+                    is_email_verified=True
+                )
+                
+                print(f"==== [ACTIVATION] Raw SQL updated: {updated_count} rows ====")
+                
+                # 3. Final verification - read from database
+                user.refresh_from_db()
+                print(f"==== [ACTIVATION] FINAL VERIFICATION: is_active={user.is_active}, is_email_verified={user.is_email_verified} ====")
+
+                success_html = f"""
+                <!DOCTYPE html>
+                <html>
+                    <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                        <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
+                        <p style="color: #8b949e; margin-top: 20px;">
+                            Welcome to EastCoast Bridge, {user.username}!
+                        </p>
+                        <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+                            <a href="/login" style="color: #00D2FF; text-decoration: none; font-weight: bold;">
+                                Go to Login →
+                            </a>
+                        </p>
+                    </body>
+                </html>
+                """
+                return HttpResponse(success_html)
+
+            except Exception as db_error:
+                print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
+                print(f"==== [ACTIVATION] ERROR TYPE: {type(db_error).__name__} ====")
+                return HttpResponse(f"Database error during activation: {str(db_error)}", status=500)
+
+        else:
+            print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
+            error_html = """
+            <!DOCTYPE html>
+            <html>
+                <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
+                    <h2 style="color: #ef4444;">Activation Failed / Expired</h2>
+                    <p style="color: #8b949e;">The activation link is invalid or has expired.</p>
+                </body>
+            </html>
+            """
+            return HttpResponse(error_html, status=400)
 
     def post(self, request, uidb64, token):
         print(f"==== [ACTIVATION] POST Request Received for UID: {uidb64} ====")
