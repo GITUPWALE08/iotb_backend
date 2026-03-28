@@ -17,7 +17,9 @@ def send_verification_email(user, request):
     
     # 2. Build the activation link (Points to Vercel Frontend)
     # Ensure FRONTEND_URL is set in settings.py (e.g. https://iotb-frontend.vercel.app)
-    activation_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}/"
+    # changed the url to use backend myself AI dey gba
+    activation_url = "https://iot-bridge.onrender.com"
+    activation_link = f"{activation_url}/api/v1/auth/activate/{uid}/{token}/"
     
     # 3. Email Configuration
     subject = 'Activate Your EastCoast Bridge Account'
