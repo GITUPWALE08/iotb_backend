@@ -122,14 +122,13 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         
         if serializer.is_valid():
-            # 1. Save the user instance but don't commit to DB yet if you need custom logic
-            # However, standard save() is fine if we update is_active immediately after.
+            # 1. Save the user instance once
             user = serializer.save()
             
-            # 2. Force the account to be inactive
-            user.is_active = False
-            user.save()
-            
+            # 2. Force the account to be inactive via direct SQL (prevents double-save mutations)
+            User.objects.filter(pk=user.pk).update(is_active=False)
+            user.refresh_from_db() # Refresh the Python object to match the database
+
             # 3. Send the "Onyx & Cyan" verification email
             try:
                 send_verification_email(user, request)
@@ -154,240 +153,55 @@ class ActivateAccountView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, uidb64, token):
-        # Using print() instead of logger so Render CANNOT hide it.
-        print(f"==== [ACTIVATION] GET Request Received for UID: {uidb64} ====")
-        print(f"==== [ACTIVATION] Full Token: {token} ====")
+        print(f"==== [ACTIVATION] GET Request (Shield) Received for UID: {uidb64} ====")
         
-        # DIRECT ACTIVATION ON GET - Idempotent approach
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
-            print(f"==== [ACTIVATION] User Found: {user.email} (Active: {user.is_active}, Verified: {user.is_email_verified}) ====")
         except Exception as e:
-            print(f"==== [ACTIVATION] ERROR finding user: {e} ====")
             return self._error_response("Invalid activation link")
 
-        # Check token validity
-        token_valid = email_verification_token.check_token(user, token)
-        print(f"==== [ACTIVATION] Token Valid: {token_valid} ====")
-        
-        if not token_valid:
+        # Check if they are already active
+        if user.is_active and user.is_email_verified:
+            return self._success_response(user, already_active=True)
+
+        # Check token validity before showing the button
+        if not email_verification_token.check_token(user, token):
             return self._error_response(
                 "Activation link has expired or is invalid.",
                 "Please request a new verification email below."
             )
 
-        # SUCCESS SCENARIOS
-        if user.is_active and user.is_email_verified:
-            print("==== [ACTIVATION] USER ALREADY ACTIVATED - Showing success page ====")
-            return self._success_response(user, already_active=True)
-        
-        # ACTIVATE THE USER
-        print("==== [ACTIVATION] ACTIVATING USER ACCOUNT... ====")
-        try:
-            user.is_active = True
-            user.is_email_verified = True
-            user.save(update_fields=['is_active', 'is_email_verified'])
-            
-            # Backup SQL update
-            updated_count = User.objects.filter(pk=uid).update(
-                is_active=True, 
-                is_email_verified=True
-            )
-            
-            print(f"==== [ACTIVATION] SQL Updated: {updated_count} rows ====")
-            
-            # Verify activation
-            user.refresh_from_db()
-            print(f"==== [ACTIVATION] FINAL STATUS: Active={user.is_active}, Verified={user.is_email_verified} ====")
-            
-            return self._success_response(user, already_active=False)
-            
-        except Exception as db_error:
-            print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
-            return self._error_response(
-                "Database error during activation.",
-                "Please try again or contact support."
-            )
-
-    def _success_response(self, user, already_active=False):
-        """Generate consistent success response"""
-        if already_active:
-            title = "Account Already Activated"
-            message = f"Welcome back to EastCoast Bridge, {user.username}!"
-            submessage = "Your account is already active and ready to use."
-        else:
-            title = "Account Activated Successfully! 🎉"
-            message = f"Welcome to EastCoast Bridge, {user.username}!"
-            submessage = "Your account has been activated and is ready to use."
-        
-        success_html = f"""
+        # TOKEN IS VALID: Show the Bot-Proof HTML Interceptor Button
+        action_url = f"/api/v1/auth/activate/{uidb64}/{token}/"
+        interceptor_html = f"""
         <!DOCTYPE html>
         <html>
             <head>
                 <style>
-                    body {{
-                        font-family: system-ui, -apple-system, sans-serif;
-                        text-align: center;
-                        padding-top: 10vh;
-                        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-                        color: white;
-                        margin: 0;
-                        min-height: 100vh;
-                    }}
-                    .container {{
-                        max-width: 500px;
-                        margin: 0 auto;
-                        padding: 40px 20px;
-                        background: rgba(255, 255, 255, 0.1);
-                        border-radius: 16px;
-                        backdrop-filter: blur(10px);
-                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                    }}
-                    .title {{
-                        color: #10b981;
-                        font-size: 28px;
-                        font-weight: 600;
-                        margin-bottom: 16px;
-                    }}
-                    .message {{
-                        color: #8b949e;
-                        font-size: 16px;
-                        margin-bottom: 24px;
-                        line-height: 1.5;
-                    }}
-                    .submessage {{
-                        color: #6b7280;
-                        font-size: 14px;
-                        margin-bottom: 32px;
-                    }}
-                    .login-btn {{
-                        display: inline-block;
-                        background: #00D2FF;
-                        color: #000;
-                        padding: 12px 24px;
-                        text-decoration: none;
-                        border-radius: 8px;
-                        font-weight: 600;
-                        font-size: 14px;
-                        transition: all 0.2s ease;
-                    }}
-                    .login-btn:hover {{
-                        background: #00a8e6;
-                        transform: translateY(-2px);
-                        box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3);
-                    }}
-                    .resend-btn {{
-                        display: inline-block;
-                        background: transparent;
-                        color: #00D2FF;
-                        padding: 8px 16px;
-                        text-decoration: none;
-                        border: 1px solid #00D2FF;
-                        border-radius: 6px;
-                        font-size: 12px;
-                        margin-top: 16px;
-                        transition: all 0.2s ease;
-                    }}
-                    .resend-btn:hover {{
-                        background: #00D2FF;
-                        color: #000;
-                    }}
+                    body {{ font-family: system-ui, -apple-system, sans-serif; text-align: center; padding-top: 10vh; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; margin: 0; min-height: 100vh; }}
+                    .container {{ max-width: 500px; margin: 0 auto; padding: 40px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }}
+                    .title {{ color: #00D2FF; font-size: 28px; font-weight: 600; margin-bottom: 16px; }}
+                    .message {{ color: #8b949e; font-size: 16px; margin-bottom: 32px; line-height: 1.5; }}
+                    .verify-btn {{ display: inline-block; background: #00D2FF; color: #000; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; transition: all 0.2s ease; }}
+                    .verify-btn:hover {{ background: #00a8e6; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3); }}
                 </style>
             </head>
             <body>
                 <div class="container">
-                    <div class="title">{title}</div>
-                    <div class="message">{message}</div>
-                    <div class="submessage">{submessage}</div>
-                    
-                    <a href="/login" class="login-btn">
-                        Go to Login →
-                    </a>
-                    
-                    <a href="/api/v1/auth/resend-verification/" class="resend-btn">
-                        Need New Verification Email?
-                    </a>
+                    <div class="title">Almost there!</div>
+                    <div class="message">Click the button below to securely verify your email address and activate your account.</div>
+                    <form method="POST" action="{action_url}">
+                        <button type="submit" class="verify-btn">
+                            Verify & Activate
+                        </button>
+                    </form>
                 </div>
             </body>
         </html>
         """
-        return HttpResponse(success_html)
+        return HttpResponse(interceptor_html)
 
-    def _error_response(self, message, submessage=""):
-        """Generate consistent error response"""
-        error_html = f"""
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <style>
-                    body {{
-                        font-family: system-ui, -apple-system, sans-serif;
-                        text-align: center;
-                        padding-top: 10vh;
-                        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-                        color: white;
-                        margin: 0;
-                        min-height: 100vh;
-                    }}
-                    .container {{
-                        max-width: 500px;
-                        margin: 0 auto;
-                        padding: 40px 20px;
-                        background: rgba(255, 255, 255, 0.1);
-                        border-radius: 16px;
-                        backdrop-filter: blur(10px);
-                        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-                    }}
-                    .title {{
-                        color: #ef4444;
-                        font-size: 28px;
-                        font-weight: 600;
-                        margin-bottom: 16px;
-                    }}
-                    .message {{
-                        color: #8b949e;
-                        font-size: 16px;
-                        margin-bottom: 24px;
-                        line-height: 1.5;
-                    }}
-                    .submessage {{
-                        color: #6b7280;
-                        font-size: 14px;
-                        margin-bottom: 32px;
-                    }}
-                    .resend-btn {{
-                        display: inline-block;
-                        background: transparent;
-                        color: #00D2FF;
-                        padding: 12px 24px;
-                        text-decoration: none;
-                        border: 1px solid #00D2FF;
-                        border-radius: 8px;
-                        font-weight: 600;
-                        font-size: 14px;
-                        transition: all 0.2s ease;
-                    }}
-                    .resend-btn:hover {{
-                        background: #00D2FF;
-                        color: #000;
-                    }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="title">Activation Failed</div>
-                    <div class="message">{message}</div>
-                    <div class="submessage">{submessage}</div>
-                    
-                    <a href="/api/v1/auth/resend-verification/" class="resend-btn">
-                        Request New Verification Email
-                    </a>
-                </div>
-            </body>
-        </html>
-        """
-        return HttpResponse(error_html, status=400)
 
     def post(self, request, uidb64, token):
         print(f"==== [ACTIVATION] POST Request Received for UID: {uidb64} ====")
@@ -395,66 +209,94 @@ class ActivateAccountView(APIView):
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
-            print(f"==== [ACTIVATION] User Found in DB: {user.email} (Current active: {user.is_active}) ====")
         except Exception as e:
-            print(f"==== [ACTIVATION] ERROR finding user: {e} ====")
-            user = None
+            return self._error_response("Invalid user identification.")
 
-        if user is not None and email_verification_token.check_token(user, token):
+        # Prevent double-activation errors if they click the button twice fast
+        if user.is_active and user.is_email_verified:
+            return self._success_response(user, already_active=True)
+
+        if email_verification_token.check_token(user, token):
             print("==== [ACTIVATION] Token is VALID. Updating user... ====")
             
             try:
-                # SIMPLIFIED APPROACH: Direct update without transaction atomic
-                # This prevents PgBouncer transaction issues
-                
                 # 1. Update the Python object
                 user.is_active = True
                 user.is_email_verified = True
                 user.save(update_fields=['is_active', 'is_email_verified'])
                 
-                print(f"==== [ACTIVATION] User object updated: is_active={user.is_active} ====")
+                # 2. Force raw SQL update as backup
+                User.objects.filter(pk=uid).update(is_active=True, is_email_verified=True)
                 
-                # 2. Force raw SQL update as backup (removed atomic wrapper)
-                updated_count = User.objects.filter(pk=uid).update(
-                    is_active=True, 
-                    is_email_verified=True
-                )
-                
-                print(f"==== [ACTIVATION] Raw SQL updated: {updated_count} rows ====")
-                
-                # 3. Final verification - read from database
-                user.refresh_from_db()
-                print(f"==== [ACTIVATION] FINAL VERIFICATION: is_active={user.is_active}, is_email_verified={user.is_email_verified} ====")
-
-                success_html = """
-                <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                    <h2 style="color: #10b981;">Account Activated Successfully! 🎉</h2>
-                    <p style="color: #8b949e; margin-top: 20px;">
-                        You can now login to your EastCoast Bridge account.
-                    </p>
-                    <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-                        <a href="/login" style="color: #00D2FF; text-decoration: none; font-weight: bold;">
-                            Go to Login →
-                        </a>
-                    </p>
-                </body>
-                """
-                return HttpResponse(success_html)
+                print(f"==== [ACTIVATION] SUCCESS: {user.email} is now active ====")
+                return self._success_response(user, already_active=False)
 
             except Exception as db_error:
                 print(f"==== [ACTIVATION] DATABASE ERROR: {db_error} ====")
-                print(f"==== [ACTIVATION] ERROR TYPE: {type(db_error).__name__} ====")
-                return HttpResponse(f"Database error during activation: {str(db_error)}", status=500)
-
+                return self._error_response("Database error during activation.", "Please try again.")
         else:
-            print("==== [ACTIVATION] Token is INVALID or ALREADY CONSUMED ====")
-            error_html = """
-            <body style="font-family: system-ui; text-align: center; padding-top: 10vh; background-color: #0f172a; color: white;">
-                <h2 style="color: #ef4444;">Activation Failed / Expired</h2>
-            </body>
-            """
-            return HttpResponse(error_html, status=400)
+            print("==== [ACTIVATION] Token INVALID or CONSUMED on POST ====")
+            return self._error_response("Activation link expired.", "Please request a new verification email.")
+
+    def _success_response(self, user, already_active=False):
+        """Generates your themed success response"""
+        title = "Account Already Activated" if already_active else "Account Activated Successfully! 🎉"
+        message = f"Welcome back to EastCoast Bridge, {user.username}!" if already_active else f"Welcome to EastCoast Bridge, {user.username}!"
+        submessage = "Your account is already active and ready to use." if already_active else "Your account has been activated and is ready to use."
         
+        success_html = f"""
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: system-ui, -apple-system, sans-serif; text-align: center; padding-top: 10vh; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; margin: 0; min-height: 100vh; }}
+                    .container {{ max-width: 500px; margin: 0 auto; padding: 40px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }}
+                    .title {{ color: #10b981; font-size: 28px; font-weight: 600; margin-bottom: 16px; }}
+                    .message {{ color: #8b949e; font-size: 16px; margin-bottom: 24px; line-height: 1.5; }}
+                    .submessage {{ color: #6b7280; font-size: 14px; margin-bottom: 32px; }}
+                    .login-btn {{ display: inline-block; background: #00D2FF; color: #000; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; transition: all 0.2s ease; }}
+                    .login-btn:hover {{ background: #00a8e6; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 210, 255, 0.3); }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="title">{title}</div>
+                    <div class="message">{message}</div>
+                    <div class="submessage">{submessage}</div>
+                    <a href="{settings.FRONTEND_URL}/login" class="login-btn">Go to Login →</a>
+                </div>
+            </body>
+        </html>
+        """
+        return HttpResponse(success_html)
+
+    def _error_response(self, message, submessage=""):
+        """Generates your themed error response"""
+        error_html = f"""
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: system-ui, -apple-system, sans-serif; text-align: center; padding-top: 10vh; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; margin: 0; min-height: 100vh; }}
+                    .container {{ max-width: 500px; margin: 0 auto; padding: 40px 20px; background: rgba(255, 255, 255, 0.1); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }}
+                    .title {{ color: #ef4444; font-size: 28px; font-weight: 600; margin-bottom: 16px; }}
+                    .message {{ color: #8b949e; font-size: 16px; margin-bottom: 24px; line-height: 1.5; }}
+                    .submessage {{ color: #6b7280; font-size: 14px; margin-bottom: 32px; }}
+                    .resend-btn {{ display: inline-block; background: transparent; color: #00D2FF; padding: 12px 24px; text-decoration: none; border: 1px solid #00D2FF; border-radius: 8px; font-weight: 600; font-size: 14px; transition: all 0.2s ease; }}
+                    .resend-btn:hover {{ background: #00D2FF; color: #000; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="title">Activation Failed</div>
+                    <div class="message">{message}</div>
+                    <div class="submessage">{submessage}</div>
+                    <a href="{settings.FRONTEND_URL}/resend-verification" class="resend-btn">Request New Verification Email</a>
+                </div>
+            </body>
+        </html>
+        """
+        return HttpResponse(error_html, status=400)       
 
 # class ActivateAccountView(APIView):
 #     """
