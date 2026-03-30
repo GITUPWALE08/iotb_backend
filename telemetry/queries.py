@@ -42,7 +42,7 @@ aggregated AS (
 )
 INSERT INTO telemetry_rollup_1m (device_id, property_id_id, label, bucket, open, high, low, close, volume)
 SELECT device_id, property_id_id, label, bucket, open, high, low, close, volume FROM aggregated
-ON CONFLICT (device_id, property_id, bucket) 
+ON CONFLICT (device_id, property_id_id, bucket) 
 DO UPDATE SET
     open = EXCLUDED.open,
     high = EXCLUDED.high,
