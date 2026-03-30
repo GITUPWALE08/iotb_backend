@@ -1,5 +1,5 @@
 # telemetry/queries.py
-
+#there seems to be error may be due to my using same commit message
 # Query 1: Raw Telemetry to 1-Minute Rollup
 # Joins with DeviceProperty to apply dynamic Volume rules.
 SQL_ROLLUP_RAW_TO_1M = """
