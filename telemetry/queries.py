@@ -22,7 +22,7 @@ WITH raw_data AS (
 aggregated AS (
     SELECT
         device_id,
-        property_id_id,
+        property_id,
         MAX(label) AS label,
         bucket,
         -- Use array_agg for highly optimized first/last values within a GROUP BY
