@@ -327,48 +327,6 @@ def telemetry_chart_endpoint(request, id):
     })
 
 
-def fetch_chart_data(model, device_id, identifier, start_time, end_time):
-    time_field = 'timestamp' if model == TelemetryLog else 'bucket'
-    return list(model.objects.filter(
-        device_id=device_id,
-        label=identifier,
-        **{f"{time_field}__gte": start_time},
-        **{f"{time_field}__lte": end_time}
-    ).order_by(time_field).values('open', 'high', 'low', 'close', 'volume', time_field)[:50000])
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def chart_data_router(request, device_id, identifier):
-    start_time = parse_datetime(request.GET.get('start'))
-    end_time = parse_datetime(request.GET.get('end'))
-    time_delta = end_time - start_time
-    
-    # 4. QUERY ROUTING
-    if time_delta <= timedelta(hours=12):
-        model, res_key, ttl = TelemetryLog, "raw", 1
-    elif time_delta <= timedelta(days=7):
-        model, res_key, ttl = TelemetryRollup1Min, "1m", 60
-    elif time_delta <= timedelta(days=30):
-        model, res_key, ttl = TelemetryRollup5Min, "5m", 360
-    elif time_delta <= timedelta(days=90):
-        model, res_key, ttl = TelemetryRollup1Hour, "1h", 3600
-    else:
-        model, res_key, ttl = TelemetryRollup1Day, "1d", 86400
-
-    # 3. REDIS CACHE LAYER
-    cache_key = f"chart:{device_id}:{identifier}:{start_time.timestamp()}:{end_time.timestamp()}:{res_key}"
-    cached_payload = cache.get(cache_key)
-    
-    if cached_payload:
-        data = json.loads(cached_payload)
-    else:
-        data = fetch_chart_data(model, device_id, identifier, start_time, end_time)
-        # Cache expires based on the resolution bucket size
-        cache.set(cache_key, json.dumps(data), timeout=ttl)
-
-    return Response({"resolution": res_key, "data": data})
-
-
 def get_safe_indicator_chart_data(device_id, property_id, start_time, end_time, resolution_key):
     # Determine models based on router logic
     rollup_model = get_rollup_model(resolution_key)

@@ -1,63 +1,64 @@
 import requests
-import json
-import random
 import time
-from datetime import datetime
+import random
+import math
+from datetime import datetime, timezone
 
 # --- CONFIGURATION ---
-# Point this to your local Django server
-URL = "http://127.0.0.1:8000/api/v1/ingest/"
+INGEST_URL = "http://127.0.0.1:8000/api/telemetry/ingest/" # Update with your actual URL path
 
-# ⚠️ REPLACE THESE WITH YOUR REAL CREDENTIALS
-DEVICE_ID = "YOUR_DEVICE_UUID_HERE"  # The ID of the Gateway Device
-API_KEY = "sk_YOUR_REAL_KEY_HERE"    # The Gateway's Secret Key
+DEVICE_ID = "your-device-uuid-here"
+# IMPORTANT: Provide the RAW API Key here. Your Django view will hash it automatically.
+API_KEY = "your-raw-api-key" 
 
-def simulate_gateway_push():
-    print(f"🚀 Starting Gateway Simulation for {DEVICE_ID}...")
+TEMP_PROPERTY_ID = 1   
+MOTOR_PROPERTY_ID = 2  
 
-    # 1. Generate Fake Bulk Data (e.g., 50 readings at once)
-    bulk_data = []
-    for i in range(50):
-        # Simulating different sensors attached to the gateway
-        bulk_data.append({
-            "label": "temperature",
-            "value": round(random.uniform(20.0, 35.0), 2),
-            "timestamp": datetime.now().isoformat()
-        })
-        bulk_data.append({
-            "label": "pressure",
-            "value": round(random.uniform(1000.0, 1020.0), 2),
-            "timestamp": datetime.now().isoformat()
-        })
+print(f"🚀 Starting Bulk IoT Simulator for Device: {DEVICE_ID}")
+print("Press Ctrl+C to stop.")
 
-    # 2. Construct the Payload
-    # Your views.py looks for a "data" list for bulk uploads
-    payload = {
-        "device_id": DEVICE_ID,
-        "api_key": API_KEY,
-        "data": bulk_data  # <--- sending the LIST here
-    }
-
-    # 3. Send the POST Request
+tick = 0
+while True:
     try:
-        start_time = time.time()
-        print(f"📦 Sending {len(bulk_data)} data points...")
+        # Generate organic, noisy data
+        base_temp = 45.0
+        temp_value = base_temp + (math.sin(tick * 0.1) * 5) + random.uniform(-0.5, 0.5)
+        motor_state = 1 if random.random() > 0.8 else 0
+
+        # Create a "Bulk" payload tailored exactly to your DataIngestionView
+        payload = {
+            "device_id": DEVICE_ID,
+            "api_key": API_KEY,
+            "data": [
+                {
+                    "property": TEMP_PROPERTY_ID,
+                    "label": "temperature",
+                    "value": round(temp_value, 2),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                },
+                {
+                    "property": MOTOR_PROPERTY_ID,
+                    "label": "motor_status",
+                    "value": float(motor_state),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            ]
+        }
+
+        # Fire the bulk payload
+        response = requests.post(INGEST_URL, json=payload)
         
-        response = requests.post(URL, json=payload, headers={"Content-Type": "application/json"})
-        
-        duration = time.time() - start_time
-        
-        # 4. Handle Response
-        if response.status_code == 201:
-            print(f"✅ SUCCESS! Uploaded in {duration:.2f} seconds.")
-            print(f"Server Response: {response.json()}")
+        if response.status_code in [202]: # Your view returns 202 ACCEPTED
+            print(f"✅ [SUCCESS] Bulk payload queued. (Tick: {tick})")
         else:
-            print(f"❌ FAILED: {response.status_code}")
-            print(f"Error Detail: {response.text}")
+            print(f"❌ [FAILED] {response.status_code}: {response.text}")
 
-    except Exception as e:
-        print(f"❌ CONNECTION ERROR: {e}")
-        print("Is your Django server running? (python manage.py runserver)")
+        tick += 1
+        time.sleep(2) # Send bulk data every 2 seconds
 
-if __name__ == "__main__":
-    simulate_gateway_push()
+    except KeyboardInterrupt:
+        print("\n🛑 Simulator stopped.")
+        break
+    except requests.exceptions.ConnectionError:
+        print("⚠️ Connection refused. Is Django running?")
+        time.sleep(5)
