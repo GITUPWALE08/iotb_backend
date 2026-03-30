@@ -6,7 +6,7 @@ SQL_ROLLUP_RAW_TO_1M = """
 WITH raw_data AS (
     SELECT
         t.device_id,
-        t.property_id,
+        t.property_id_id AS property_id,
         t.label,
         t.value,
         t.timestamp,
