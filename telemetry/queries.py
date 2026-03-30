@@ -38,7 +38,7 @@ aggregated AS (
             ELSE COUNT(value)::float
         END AS volume
     FROM raw_data
-    GROUP BY device_id, property_id, bucket
+    GROUP BY device_id, property_id_id, bucket
 )
 INSERT INTO telemetry_rollup_1m (device_id, property_id_id, label, bucket, open, high, low, close, volume)
 SELECT device_id, property_id_id, label, bucket, open, high, low, close, volume FROM aggregated
