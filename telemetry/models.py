@@ -5,6 +5,8 @@ from devices.models import Device, DeviceProperty
 # telemetry/models.py
 from django.db import models
 
+
+#just added a comment here to be able to commit
 class TelemetryLog(models.Model):
     device = models.ForeignKey('devices.Device', on_delete=models.CASCADE)
     property = models.ForeignKey(DeviceProperty, on_delete=models.CASCADE)
