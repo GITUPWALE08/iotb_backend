@@ -6,7 +6,7 @@ SQL_ROLLUP_RAW_TO_1M = """
 WITH raw_data AS (
     SELECT
         t.device_id,
-        t.property_id,
+        t.property_id_id,
         t.label,
         t.value,
         t.timestamp,
@@ -14,7 +14,7 @@ WITH raw_data AS (
         p.unit,
         p.data_type,
         -- Window function to get previous value for binary state change calculation
-        LAG(t.value) OVER (PARTITION BY t.device_id, t.property_id ORDER BY t.timestamp) as prev_value
+        LAG(t.value) OVER (PARTITION BY t.device_id, t.property_id_id ORDER BY t.timestamp) as prev_value
     FROM telemetry_telemetrylog t
     JOIN devices_deviceproperty p ON t.property_id_id = p.id
     WHERE t.timestamp >= %s AND t.timestamp < %s
@@ -22,7 +22,7 @@ WITH raw_data AS (
 aggregated AS (
     SELECT
         device_id,
-        property_id,
+        property_id_id,
         MAX(label) AS label,
         bucket,
         -- Use array_agg for highly optimized first/last values within a GROUP BY
@@ -40,8 +40,8 @@ aggregated AS (
     FROM raw_data
     GROUP BY device_id, property_id, bucket
 )
-INSERT INTO telemetry_rollup_1m (device_id, property_id, label, bucket, open, high, low, close, volume)
-SELECT device_id, property_id, label, bucket, open, high, low, close, volume FROM aggregated
+INSERT INTO telemetry_rollup_1m (device_id, property_id_id, label, bucket, open, high, low, close, volume)
+SELECT device_id, property_id_id, label, bucket, open, high, low, close, volume FROM aggregated
 ON CONFLICT (device_id, property_id, bucket) 
 DO UPDATE SET
     open = EXCLUDED.open,
@@ -57,7 +57,7 @@ SQL_HIERARCHICAL_ROLLUP = """
 WITH aggregated AS (
     SELECT
         device_id,
-        property_id,
+        property_id_id,
         MAX(label) AS label,
         {time_bin_function} AS bucket,
         (array_agg(open ORDER BY bucket ASC))[1] AS open,
@@ -67,11 +67,11 @@ WITH aggregated AS (
         SUM(volume) AS volume
     FROM {source_table}
     WHERE bucket >= %s AND bucket < %s
-    GROUP BY device_id, property_id, {time_bin_function}
+    GROUP BY device_id, property_id_id, {time_bin_function}
 )
-INSERT INTO {target_table} (device_id, property_id, label, bucket, open, high, low, close, volume)
-SELECT device_id, property_id, label, bucket, open, high, low, close, volume FROM aggregated
-ON CONFLICT (device_id, property_id, bucket) 
+INSERT INTO {target_table} (device_id, property_id_id, label, bucket, open, high, low, close, volume)
+SELECT device_id, property_id_id, label, bucket, open, high, low, close, volume FROM aggregated
+ON CONFLICT (device_id, property_id_id, bucket) 
 DO UPDATE SET
     open = EXCLUDED.open,
     high = EXCLUDED.high,
