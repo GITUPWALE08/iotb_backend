@@ -38,40 +38,40 @@ class TelemetryRollup1Min(AbstractTelemetryRollup):
     class Meta:
         db_table = 'telemetry_rollup_1m'
         constraints = [
-            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_1m_bucket')
+            models.UniqueConstraint(fields=['device_id', 'property', 'bucket'], name='unique_1m_bucket')
         ]
         indexes = [
-            models.Index(fields=['device_id', 'property_id', '-bucket']),
+            models.Index(fields=['device_id', 'property', '-bucket']),
         ]
 
 class TelemetryRollup5Min(AbstractTelemetryRollup):
     class Meta:
         db_table = 'telemetry_rollup_5m'
         constraints = [
-            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_5m_bucket')
+            models.UniqueConstraint(fields=['device_id', 'property', 'bucket'], name='unique_5m_bucket')
         ]
         indexes = [
-            models.Index(fields=['device_id', 'property_id', '-bucket']),
+            models.Index(fields=['device_id', 'property', '-bucket']),
         ]
 
 class TelemetryRollup1Hour(AbstractTelemetryRollup):
     class Meta:
         db_table = 'telemetry_rollup_1h'
         constraints = [
-            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_1h_bucket')
+            models.UniqueConstraint(fields=['device_id', 'property', 'bucket'], name='unique_1h_bucket')
         ]
         indexes = [
-            models.Index(fields=['device_id', 'property_id', '-bucket']),
+            models.Index(fields=['device_id', 'property', '-bucket']),
         ]
 
 class TelemetryRollup1Day(AbstractTelemetryRollup):
     class Meta:
         db_table = 'telemetry_rollup_1d'
         constraints = [
-            models.UniqueConstraint(fields=['device_id', 'property_id', 'bucket'], name='unique_1d_bucket')
+            models.UniqueConstraint(fields=['device_id', 'property', 'bucket'], name='unique_1d_bucket')
         ]
         indexes = [
-            models.Index(fields=['device_id', 'property_id', '-bucket']),
+            models.Index(fields=['device_id', 'property', '-bucket']),
         ]
 
 # --- 5. MEDIA LOG (Audio/Video Files) ---
