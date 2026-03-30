@@ -21,7 +21,7 @@ class TelemetryLog(models.Model):
 
 class AbstractTelemetryRollup(models.Model):
     device_id = models.UUIDField()
-    property_id = models.BigIntegerField()
+    property = models.ForeignKey(DeviceProperty, on_delete=models.CASCADE)
     label = models.CharField(max_length=50)
     bucket = models.DateTimeField()
     
