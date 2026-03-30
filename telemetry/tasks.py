@@ -2,7 +2,7 @@
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
-from telemetry.tasks.rollup_engine import TelemetryRollupEngine
+from telemetry.task.rollup_engine import TelemetryRollupEngine
 
 
 @shared_task
