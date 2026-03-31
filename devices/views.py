@@ -72,7 +72,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
         raw_key = f"sk_{secrets.token_urlsafe(24)}"
         
         # Hash it (The database stores this)
-        hashed_key = hashlib.sha256(raw_key.encode()).hexdigest()
+        hashed_key = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
         
         # Save to DB with the owner and the HASH
         instance = serializer.save(owner=self.request.user, api_key_hash=hashed_key)
