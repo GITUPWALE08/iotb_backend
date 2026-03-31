@@ -68,7 +68,7 @@ class DataIngestionView(APIView):
         ).exists()
 
         if not device_exists:
-            return Response({"error": "Invalid credentials or inactive device"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Invalid credentials or inactive device wale"}, status=status.HTTP_401_UNAUTHORIZED)
 
         # 2. Payload Format Determination
         payload_type = "single"
