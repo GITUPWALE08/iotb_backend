@@ -58,12 +58,6 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """
-        Auto-assign the logged-in user as the owner.
-        """
-        serializer.save(owner=self.request.user)
-        logger.info(f"New device registered by user: {self.request.user.username}")
-
-        """
         1. Generate a secure random key (e.g., sk_live_...)
         2. Hash it for the database (SHA-256)
         3. Save the Hash to DB, but attach Raw Key to object for the UI
@@ -74,13 +68,20 @@ class DeviceViewSet(viewsets.ModelViewSet):
         # Hash it (The database stores this)
         hashed_key = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
         
-        # Save to DB with the owner and the HASH
-        instance = serializer.save(owner=self.request.user, api_key_hash=hashed_key)
+        # 2. Perform the initial save via the serializer (assigns the owner)
+        instance = serializer.save(owner=self.request.user)
         
-        # Attach raw key to the instance so Serializer can show it in the response
+        # 3. Explicitly assign the hash to the model instance. 
+        # This bypasses the serializer so `editable=False` doesn't block it.
+        instance.api_key_hash = hashed_key
+        instance.save(update_fields=['api_key_hash'])
+        
+        # 4. Attach the raw key so the UI can display it in the response payload
         instance.raw_api_key = raw_key
         
-        logger.info(f"Device {instance.id} created with new secure key.")
+        
+        logger.info(f"New Device {instance.id} created with new secure key registered by user: {self.request.user.username}")
+        
 
     def destroy(self, request, *args, **kwargs):
         """

@@ -43,7 +43,7 @@ class Device(models.Model):
     port_address = models.IntegerField(default=80)
     
     # Security & Status
-    api_key_hash = models.CharField(max_length=128, editable=False)
+    api_key_hash = models.CharField(max_length=128, editable=False, )
     is_active = models.BooleanField(default=True)
     last_seen = models.DateTimeField(null=True, blank=True)
     is_online = models.BooleanField(default=False)

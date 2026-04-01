@@ -65,7 +65,8 @@ class DataIngestionView(APIView):
         # Optimize lookup by checking existence only
         device_exists = Device.objects.filter(
             id=device_id,
-            api_key_hash=key_hash,
+            api_key_hash=key_hash, 
+            is_active=True
         ).exists()
 
         if not device_exists:
