@@ -1,11 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 from .models import User, Device
-from .views import logger
+import logging
 import secrets
 import hashlib
 
-
+logger = logging.getLogger(__name__)
 # class DeviceSerializer(serializers.ModelSerializer):
 #     # Calculated field for frontend convenience
 #     status = serializers.SerializerMethodField(read_only=True)
