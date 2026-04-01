@@ -4,11 +4,11 @@ import redis
 from django.conf import settings
 import os
 
+redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+
 # Initialize strict Redis client
 redis_client = redis.Redis(
-    host=os.environ.get("REDIS_URL") ,
-    port=6379,
-    db=0,
+    redis_url,
     decode_responses=True
 )
 
