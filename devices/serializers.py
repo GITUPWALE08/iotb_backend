@@ -63,6 +63,7 @@ class DeviceSerializer(serializers.ModelSerializer):
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
         validated_data['api_key_hash'] = key_hash
         logger.info(f"Serializer hash: {key_hash}")
+        logger.info(f"Serializer raw_key: {raw_key}")
         
         # C. Create the Device
         device = super().create(validated_data)
