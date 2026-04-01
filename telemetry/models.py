@@ -8,7 +8,7 @@ from django.db import models
 
 class TelemetryLog(models.Model):
     device = models.ForeignKey('devices.Device', on_delete=models.CASCADE)
-    property = models.ForeignKey(DeviceProperty, on_delete=models.CASCADE)
+    property = models.ForeignKey(DeviceProperty, on_delete=models.CASCADE, db_column='property_id_id')
     label = models.CharField(max_length=50)
     value = models.FloatField()
     timestamp = models.DateTimeField()
