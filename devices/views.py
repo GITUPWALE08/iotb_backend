@@ -62,24 +62,20 @@ class DeviceViewSet(viewsets.ModelViewSet):
         2. Hash it for the database (SHA-256)
         3. Save the Hash to DB, but attach Raw Key to object for the UI
         """
-        # Generate the Raw Key (The user sees this ONCE)
-        raw_key = f"sk_{secrets.token_urlsafe(24)}"
-        logger.info(f"Generated raw_key: {raw_key}")
-        
-        # Hash it (The database stores this)
-        hashed_key = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
-        logger.info(f"ViewSet hash: {hashed_key}")
+    
         
         # 2. Perform the initial save via the serializer (assigns the owner)
         instance = serializer.save(owner=self.request.user)
         
-        # 3. Explicitly assign the hash to the model instance. 
-        # This bypasses the serializer so `editable=False` doesn't block it.
-        instance.api_key_hash = hashed_key
-        instance.save(update_fields=['api_key_hash'])
+        # 2. The serializer's create() method already attached raw_api_key
+        # Get the raw key that serializer generated
+        raw_key = getattr(instance, 'raw_api_key', None)
         
-        # 4. Attach the raw key so the UI can display it in the response payload
-        instance.raw_api_key = raw_key
+        # 3. Log for debugging
+        logger.info(f"Device {instance.id} created with key from serializer by user: {self.request.user.username}")
+        logger.info(f"Raw key returned: {raw_key[:20]}..." if raw_key else "None")
+        
+        
         
         
         logger.info(f"New Device {instance.id} created with new secure key registered by user: {self.request.user.username}")

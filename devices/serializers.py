@@ -60,7 +60,7 @@ class DeviceSerializer(serializers.ModelSerializer):
         raw_key = f"sk_{secrets.token_urlsafe(16)}"
         
         # B. Hash it (SHA-256) for the database
-        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        key_hash = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
         validated_data['api_key_hash'] = key_hash
         logger.info(f"Serializer hash: {key_hash}")
         logger.info(f"Serializer raw_key: {raw_key}")
