@@ -2,10 +2,11 @@
 import json
 import redis
 from django.conf import settings
+import os
 
 # Initialize strict Redis client
 redis_client = redis.Redis(
-    host="127.0.0.1",
+    host=os.environ.get("REDIS_URL") ,
     port=6379,
     db=0,
     decode_responses=True
