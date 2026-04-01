@@ -10,10 +10,10 @@ import certifi
 INGEST_URL = "https://iot-bridge.onrender.com/api/v1/ingest/" # Update with your actual URL path
 #d7f875e2-2330-4099-b19c-3033cc761e62
 
-DEVICE_ID = "d7f875e2-2330-4099-b19c-3033cc761e62"
+DEVICE_ID = "3dc7d12e-5c44-44a5-90c5-1d36d5a42111"
 # IMPORTANT: Provide the RAW API Key here. Your Django view will hash it automatically.
 API_K = "sk_uYP2vm2j3Xy_c2GxuFMaGA" 
-API_KEY = "sk_scqfz0AALRIoOEdDMeQq-A"
+API_KEY = "sk_DD1TbUBKWajXbpunQPbiHw"
 TEMP_PROPERTY_ID = 1   
 MOTOR_PROPERTY_ID = 2  
 
