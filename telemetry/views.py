@@ -55,19 +55,26 @@ class DataIngestionView(APIView):
         payload = request.data
         device_id = payload.get("device_id")
         api_key = payload.get("api_key") or request.headers.get("X-API-KEY")
+        logger.info(f"Device ID: {device_id} (type: {type(device_id)})")
 
         if not device_id or not api_key:
             return Response({"error": "Missing device_id or api_key"}, status=status.HTTP_400_BAD_REQUEST)
 
+        logger.info(f"API Key: '{api_key}' (len: {len(api_key)}")
+
         # 1. Fast API Key Hash Authentication
         key_hash = hashlib.sha256(api_key.encode('utf-8')).hexdigest()
         
+        logger.info(f"Validation hash: {key_hash}")
+
         # Optimize lookup by checking existence only
         device_exists = Device.objects.filter(
             id=device_id,
             api_key_hash=key_hash, 
             is_active=True
         ).exists()
+
+        loger.info(f"Query filter: id={device_id}, hash={key_hash}, active=True")
 
         if not device_exists:
             return Response({"error": "Invalid credentials or inactive device wale"}, status=status.HTTP_401_UNAUTHORIZED)

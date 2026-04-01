@@ -64,9 +64,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
         """
         # Generate the Raw Key (The user sees this ONCE)
         raw_key = f"sk_{secrets.token_urlsafe(24)}"
+        logger.info(f"Generated raw_key: {raw_key}")
         
         # Hash it (The database stores this)
         hashed_key = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
+        logger.info(f"ViewSet hash: {hashed_key}")
         
         # 2. Perform the initial save via the serializer (assigns the owner)
         instance = serializer.save(owner=self.request.user)
