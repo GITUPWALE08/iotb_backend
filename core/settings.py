@@ -92,7 +92,6 @@ if os.environ.get('RENDER'):
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
                 "hosts": [os.environ.get('REDIS_URL')],
-                # "hosts": [("redis-channels-url.render.com", 6379)],
                 "capacity": 1500,  # Drop messages if the client queue exceeds 1500
                 "expiry": 10,    # Expire unread messages after 10 seconds
         
