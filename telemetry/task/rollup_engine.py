@@ -7,6 +7,8 @@ class TelemetryRollupEngine:
     
     @staticmethod
     def _execute_sql(query: str, start_time: datetime, end_time: datetime):
+        # Force fresh connection to avoid Django SQL cache issues
+        from django.db import connection
         with connection.cursor() as cursor:
             cursor.execute(query, [start_time, end_time])
             
