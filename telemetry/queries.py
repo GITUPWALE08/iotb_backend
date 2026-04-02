@@ -15,7 +15,7 @@ WITH raw_data AS (
         p.data_type,
         -- Window function to get previous value for binary state change calculation
         LAG(t.value) OVER (PARTITION BY t.device_id, t.property_id ORDER BY t.timestamp) as prev_value
-    FROM public.telemetry_telemetrylog t
+    FROM telemetry_telemetrylog t
     JOIN devices_deviceproperty p ON t.property_id = p.id
     WHERE t.timestamp >= %s AND t.timestamp < %s
 ),

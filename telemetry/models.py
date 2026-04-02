@@ -20,7 +20,7 @@ class TelemetryLog(models.Model):
             models.Index(fields=['property', 'timestamp']),
         ]
         # Indexes are handled manually in the migration for the partitioned table
-        managed = False 
+        
 
 class AbstractTelemetryRollup(models.Model):
     device_id = models.UUIDField()
