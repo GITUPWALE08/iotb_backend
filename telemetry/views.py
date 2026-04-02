@@ -74,7 +74,7 @@ class DataIngestionView(APIView):
             is_active=True
         ).exists()
 
-        loger.info(f"Query filter: id={device_id}, hash={key_hash}, active=True")
+        logger.info(f"Query filter: id={device_id}, hash={key_hash}, active=True")
 
         if not device_exists:
             return Response({"error": "Invalid credentials or inactive device wale"}, status=status.HTTP_401_UNAUTHORIZED)
