@@ -1,10 +1,7 @@
-import os
-from celery import Celery
+# core/celery.py (DEPRECATED - Celery Removed)
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+# NOTE: This file is now empty - Celery has been completely removed
+# All task processing now uses Django management commands
+# See: telemetry/management/commands/rollup_*.py
 
-app = Celery('core')
-
-app.config_from_object('django.conf:settings', namespace='CELERY')
-
-app.autodiscover_tasks()
+print("Celery has been removed - using Django management commands instead")

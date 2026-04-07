@@ -564,8 +564,11 @@ class SubmitCommandView(APIView):
         except IntegrityError:
             return Response({"error": "Duplicate command"}, status=status.HTTP_409_CONFLICT)
 
-        # 3. Push to Redis Command Queue via Celery
-        process_command_delivery.delay(command.id)
+        # 3. Process command delivery (synchronous - no Celery)
+        try:
+            process_command_delivery(command.id)
+        except Exception as e:
+            logger.error(f"Command delivery failed: {e}")
 
         # 4. Return immediately
         return Response({

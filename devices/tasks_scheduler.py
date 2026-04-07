@@ -1,12 +1,14 @@
-# devices/tasks_scheduler.py
-from celery import shared_task
+# devices/tasks_scheduler.py (DEPRECATED - Use Django Management Commands)
+# NOTE: All Celery task decorators removed
+# Use: python manage.py rollup_* instead
+
+# from celery import shared_task  # REMOVED
 from django.utils import timezone
 from datetime import timedelta
 from devices import models
 from devices.models import CommandQueue, CommandState
 from devices.tasks import process_command_delivery
 
-@shared_task
 def command_maintenance_worker():
     now = timezone.now()
 

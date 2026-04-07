@@ -1,16 +1,15 @@
 # devices/tasks.py
 import json
 import paho.mqtt.publish as publish
-from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
 from devices.models import CommandQueue, CommandState
 
-@shared_task(bind=True, max_retries=5, acks_late=True)
-def process_command_delivery(self, command_id):
-    """
-    Worker task to deliver commands. Uses exponential backoff for retries.
-    """
+# NOTE: These functions are now called synchronously, not as Celery tasks
+# All command processing happens immediately without background workers
+
+def process_command_delivery(command_id):
+    """Process command delivery - now synchronous (no Celery)"""
     try:
         command = CommandQueue.objects.select_related('device', 'target_property').get(id=command_id)
     except CommandQueue.DoesNotExist:

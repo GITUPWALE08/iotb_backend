@@ -1,8 +1,10 @@
-# telemetry/tasks/rollup_worker.py
+# telemetry/tasks/rollup_worker.py (DEPRECATED - Use Django Management Commands)
+# NOTE: All Celery task decorators removed
+# Use: python manage.py rollup_* instead
+
 from datetime import timedelta
 from django.utils.timezone import now
 from django.db import transaction
-from celery import shared_task # Ensure these are registered as Celery tasks
 
 from devices.models import DeviceProperty
 from telemetry.models import (
@@ -15,7 +17,6 @@ from telemetry.models import (
 from telemetry.utils.volume import calculate_volume
 from utils.volume_calculator import calculate_dynamic_volume
 
-@shared_task
 def generate_1m_rollups():
     """Runs every minute to aggregate the previous minute's raw data."""
     end_time = now().replace(second=0, microsecond=0)

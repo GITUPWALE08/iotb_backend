@@ -1,5 +1,5 @@
 import pymysql
-from .celery import app as celery_app
 
 pymysql.install_as_MySQLdb()
-__all__ = ("celery_app",)
+
+# NOTE: Celery has been removed - using Django management commands instead
