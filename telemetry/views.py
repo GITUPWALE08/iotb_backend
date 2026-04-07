@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -36,6 +36,8 @@ from .indicator_rollup_model import get_indicator_model, get_rollup_model
 from telemetry.api.routing import get_rollup_strategy
 from telemetry.api.queries import execute_chart_query
 from telemetry.utils.cache import get_or_set_chart_cache
+
+from django.db import models
 
 from django.db import models
 

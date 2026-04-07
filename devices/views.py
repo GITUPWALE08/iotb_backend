@@ -297,34 +297,6 @@ class ActivateAccountView(APIView):
         """
         return HttpResponse(error_html, status=400)       
 
-# class ActivateAccountView(APIView):
-#     """
-#     The "Key" to the Fortress:
-#     - Decodes the UID from the email link.
-#     - Validates the one-time token.
-#     - Activates the user account.
-#     """
-#     permission_classes = [permissions.AllowAny]
-
-#     def post(self, request, uidb64, token):
-#         try:
-#             # 1. Decode the User ID
-#             uid = force_str(urlsafe_base64_decode(uidb64))
-#             user = User.objects.get(pk=uid)
-#         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-#             user = None
-
-#         # 2. Validate Token
-#         if user is not None and email_verification_token.check_token(user, token):
-#             user.is_active = True
-#             user.is_email_verified = True
-#             user.save()
-            
-#             logger.info(f"Account activated successfully: {user.username}")
-#             return Response({"message": "Account activated successfully!"}, status=status.HTTP_200_OK)
-#         else:
-#             logger.warning(f"Failed activation attempt for UID: {uidb64}")
-#             return Response({"error": "Activation link is invalid or expired."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ResendVerificationView(APIView):

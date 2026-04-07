@@ -18,13 +18,15 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from telemetry.management.commands.run_rollups import *
+from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from django.http import JsonResponse
 from telemetry.views import *
 from telemetry.ai_views import AIReportView
 from devices.views import *
 from devices.api.ack import CommandAcknowledgementView
-from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from django.http import JsonResponse
+from telemetry.management.commands import run_rollups
 
 #0.0 Defining the Health Check view directly here
 def api_root(request):
@@ -40,7 +42,8 @@ from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.conf import settings
 import os
-from telemetry.views import AlertViewSet
+from telemetry.views import *
+
 
 def debug_email(request):
     try:
@@ -106,7 +109,13 @@ urlpatterns = [
     # --- DEVICE MANAGEMENT (User Dashboard) ---
     path('api/v1/', include(router.urls)),
     
-
+    # --- ROLLUP MANAGEMENT COMMANDS ---
+    path('api/v1/rollup/raw-to-1m/', run_rollups.rollup_raw_to_1m, name='rollup_raw_to_1m'),
+    path('api/v1/rollup/1m-to-5m/', run_rollups.rollup_1m_to_5m, name='rollup_1m_to_5m'),
+    path('api/v1/rollup/5m-to-1h/', run_rollups.rollup_5m_to_1h, name='rollup_5m_to_1h'),
+    path('api/v1/rollup/1h-to-1d/', run_rollups.rollup_1h_to_1d, name='rollup_1h_to_1d'),
+    path('api/v1/rollup/all/', run_rollups.rollup_all, name='rollup_all'),
+    
     # ✅ NEW: Alerting Routes
     path('api/v1/devices/<str:device_id>/alerts/', AlertViewSet.as_view({'get': 'list', 'post': 'create'})),
     path('api/v1/devices/<str:device_id>/commands/<int:command_id>/cancel/', cancel_command, name='cancel-command'),
