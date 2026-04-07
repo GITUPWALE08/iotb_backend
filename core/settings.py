@@ -27,7 +27,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-dev-key")
 DEBUG = not os.environ.get("RENDER")
 
 ALLOWED_HOSTS = [
-    ".onrender.com",
+    "https://iot-bridge.onrender.com/",
     "localhost",
     "127.0.0.1",
 ]
