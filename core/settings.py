@@ -135,10 +135,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.environ.get("DATABASE_URL"),
+        default=os.environ.get(
+            'DATABASE_URL',
+            'postgresql://iot_user:wale%400811@127.0.0.1:5432/iot_bridge_db'
+        ),
         conn_max_age=600,
         conn_health_checks=True,
-        ssl_require=bool(os.environ.get("RENDER")),
     )
 }
 
