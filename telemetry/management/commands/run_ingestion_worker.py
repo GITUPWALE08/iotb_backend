@@ -132,7 +132,7 @@ class Command(BaseCommand):
                                 "device_id": dev_id,
                                 "label": payload["label"],
                                 "value": float(payload["value"]),
-                                "property_id_id": prop_id,
+                                "property_id": prop_id,
                                 "timestamp": payload["timestamp"]
                             })
 
@@ -151,7 +151,7 @@ class Command(BaseCommand):
                                 "device_id": dev_id,
                                 "label": pt["label"],
                                 "value": float(pt["value"]),
-                                "property_id_id": prop_id,
+                                "property_id": prop_id,
                                 "timestamp": pt["timestamp"]
                             })
 
