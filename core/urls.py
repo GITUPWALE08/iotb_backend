@@ -85,7 +85,7 @@ router.register(r'devices', DeviceViewSet, basename='device')
 
 urlpatterns = [
     # path('emergency-setup/', emergency_admin_setup),
-    path('debug/queue/', views.debug_queue_status, name='debug-queue'),
+    path('debug/queue/', debug_queue_status, name='debug-queue'),
     path('debug-email/', debug_email), 
     path('admin/', admin.site.urls),
     path('', api_root, name='api_root'),
