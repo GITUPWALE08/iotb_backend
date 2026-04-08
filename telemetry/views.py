@@ -24,6 +24,7 @@ from django.core.cache import cache
 from datetime import timedelta
 from rest_framework.permissions import IsAuthenticated
 from django.utils.dateparse import parse_datetime
+from django.core.serializers.json import DjangoJSONEncoder
 from .models import (
     TelemetryLog, 
     TelemetryRollup1Min, 
@@ -267,21 +268,15 @@ def device_history(request, device_id):
 
 def get_safe_chart_data(model_class, device_id, label, start_time, end_time):
     """Safely retrieves OHLCV data enforcing the 50,000 point UI constraint."""
-    # Note: If routing to the raw TelemetryLog, 'bucket' should be 'timestamp'
-    time_field = 'timestamp' if model_class == TelemetryLog else 'bucket'
     
+    # Use the model_class parameter passed from the view!
     queryset = model_class.objects.filter(
         device_id=device_id,
         label=label,
-        **{f"{time_field}__gte": start_time},
-        **{f"{time_field}__lte": end_time}
-    ).order_by(time_field)
+        timestamp__gte=start_time,
+        timestamp__lte=end_time
+    ).order_by('timestamp')
     
-    # If it's a rollup table, fetch the pre-calculated OHLCV values
-    if model_class != TelemetryLog:
-        return list(queryset.values('bucket', 'open', 'high', 'low', 'close', 'volume')[:50000])
-    
-    # If it's the raw table, just fetch timestamp and value
     return list(queryset.values('timestamp', 'value')[:50000])
 
 
@@ -289,7 +284,6 @@ def get_safe_chart_data(model_class, device_id, label, start_time, end_time):
 @permission_classes([IsAuthenticated])
 def telemetry_chart_endpoint(request, id):
     """
-    Replaces the dangerous historical GET endpoint.
     Routes queries to the correct aggregation table based on the time window.
     """
     device_id = id
@@ -302,21 +296,10 @@ def telemetry_chart_endpoint(request, id):
 
     start_time = parse_datetime(start_time_str)
     end_time = parse_datetime(end_time_str)
-    time_delta = end_time - start_time
     
-    # 1. QUERY ROUTING LOGIC
-    if time_delta <= timedelta(hours=12):
-        model = TelemetryLog
-        res_key = "raw"
-    elif time_delta <= timedelta(days=7):
-        model = TelemetryRollup1Min
-        res_key = "1m"
-    elif time_delta <= timedelta(days=90):
-        model = TelemetryRollup1Hour
-        res_key = "1h"
-    else:
-        model = TelemetryRollup1Day
-        res_key = "1d"
+    # 1. TEMPORARY ROUTING LOGIC: Hardcoded to raw data until Cron/Celery is rebuilt
+    model = TelemetryLog
+    res_key = "raw"
 
     # 2. REDIS CACHING LOGIC
     cache_key = f"chart:{device_id}:{identifier}:{start_time.timestamp()}:{end_time.timestamp()}:{res_key}"
@@ -327,8 +310,9 @@ def telemetry_chart_endpoint(request, id):
     else:
         # Cache miss: Execute the safe DB query callback
         data = get_safe_chart_data(model, device_id, identifier, start_time, end_time)
-        # Cache for 60 seconds to prevent DB spam on rapid UI reloads
-        cache.set(cache_key, json.dumps(data), timeout=60)
+        
+        # CRITICAL FIX: DjangoJSONEncoder tells Python how to handle the datetime objects!
+        cache.set(cache_key, json.dumps(data, cls=DjangoJSONEncoder), timeout=60)
 
     return Response({
         "resolution": res_key, 

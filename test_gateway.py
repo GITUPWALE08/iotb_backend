@@ -57,7 +57,7 @@ while True:
             print(f"❌ [FAILED] {response.status_code}: {response.text}")
 
         tick += 1
-        time.sleep(2) # Send bulk data every 2 seconds
+        time.sleep(0.1) # Send bulk data every 2 seconds
 
     except KeyboardInterrupt:
         print("\n🛑 Simulator stopped.")
