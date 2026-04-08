@@ -1,6 +1,6 @@
 import json
 import time
-from datetime import timezone
+from datetime import datetime
 
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand
@@ -170,7 +170,7 @@ class Command(BaseCommand):
                         broadcast_map[dev_id].append([
                             rec["label"],
                             rec["value"],
-                            int(rec["timestamp"].timestamp() * 1000)
+                            int(datetime.fromisoformat(rec["timestamp"].timestamp() * 1000))
                         ])
 
                 except Exception as e:
