@@ -170,7 +170,7 @@ class Command(BaseCommand):
                         broadcast_map[dev_id].append([
                             rec["label"],
                             rec["value"],
-                            int(datetime.fromisoformat(rec["timestamp"].timestamp() * 1000))
+                            int(datetime.fromisoformat(rec["timestamp"]).timestamp() * 1000)
                         ])
 
                 except Exception as e:
