@@ -360,3 +360,36 @@ def get_safe_indicator_chart_data(device_id, property_id, start_time, end_time, 
     
     return list(queryset)
 
+
+
+@api_view(['GET'])
+@permission_classes([])  # Temporarily bypass auth so you can view it in your browser
+def debug_queue_status(request):
+    """Temporary diagnostic endpoint to check Redis queue health."""
+    redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+    
+    try:
+        client = redis.from_url(redis_url, decode_responses=True)
+        
+        main_queue_len = client.llen("iotb:ingest:telemetry_queue")
+        dlq_len = client.llen("iotb:ingest:dead_letter_queue")
+        
+        latest_error = None
+        if dlq_len > 0:
+            raw_error = client.lindex("iotb:ingest:dead_letter_queue", 0)
+            try:
+                latest_error = json.loads(raw_error)
+            except:
+                latest_error = raw_error
+                
+        return Response({
+            "status": "Redis Connected",
+            "telemetry_queue_pending": main_queue_len,
+            "dead_letter_queue_failed": dlq_len,
+            "latest_dlq_error": latest_error
+        })
+        
+    except Exception as e:
+        return Response({"status": "Redis Connection Failed", "error": str(e)})
+    
+    
