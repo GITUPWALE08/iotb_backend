@@ -282,7 +282,7 @@ def get_safe_chart_data(model_class, device_id, label, start_time, end_time):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def telemetry_chart_endpoint(request, id):
+def telemetry_chart_endpoint(request, device_id):
     """
     Routes queries to the correct aggregation table based on the time window.
     """
