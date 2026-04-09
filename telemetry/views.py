@@ -286,7 +286,7 @@ def telemetry_chart_endpoint(request, device_id):
     """
     Routes queries to the correct aggregation table based on the time window.
     """
-    device_id = id
+    device_id = device_id
     identifier = request.GET.get('identifier')
     start_time_str = request.GET.get('start')
     end_time_str = request.GET.get('end')
