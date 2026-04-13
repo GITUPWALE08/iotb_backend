@@ -3,6 +3,7 @@ import json
 import logging
 from django.db import models, transaction
 from django.utils import timezone
+from django.core.serializers.json import DjangoJSONEncoder
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -266,59 +267,49 @@ def device_history(request, device_id):
 
 
 
-def get_safe_chart_data(model_class, device_id, label, start_time, end_time):
-    """Safely retrieves OHLCV data enforcing the 50,000 point UI constraint."""
-    
-    # Use the model_class parameter passed from the view!
-    queryset = model_class.objects.filter(
+def get_safe_chart_data(device_id, label, start_time, end_time, limit=2000):
+    """Fetches raw data, capped at 2000 points to prevent DB timeout."""
+    # Query descending (-timestamp) to get the most recent data first
+    queryset = TelemetryLog.objects.filter(
         device_id=device_id,
         label=label,
         timestamp__gte=start_time,
         timestamp__lte=end_time
-    ).order_by('timestamp')
+    ).order_by('-timestamp')[:limit]
     
-    return list(queryset.values('timestamp', 'value')[:50000])
-
+    # Evaluate the query into a list, then reverse it back to chronological order for the chart
+    data = list(queryset.values('timestamp', 'value'))
+    data.reverse()
+    return data
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def telemetry_chart_endpoint(request, device_id):
-    """
-    Routes queries to the correct aggregation table based on the time window.
-    """
-    device_id = device_id
+    """Blazing fast endpoint returning raw telemetry points."""
     identifier = request.GET.get('identifier')
     start_time_str = request.GET.get('start')
     end_time_str = request.GET.get('end')
 
     if not all([identifier, start_time_str, end_time_str]):
-        return Response({"error": "Missing required parameters: identifier, start, end"}, status=400)
+        return Response({"error": "Missing required parameters"}, status=400)
 
     start_time = parse_datetime(start_time_str)
     end_time = parse_datetime(end_time_str)
-    
-    # 1. TEMPORARY ROUTING LOGIC: Hardcoded to raw data until Cron/Celery is rebuilt
-    model = TelemetryLog
-    res_key = "raw"
 
-    # 2. REDIS CACHING LOGIC
-    cache_key = f"chart:{device_id}:{identifier}:{start_time.timestamp()}:{end_time.timestamp()}:{res_key}"
+    cache_key = f"chart:{device_id}:{identifier}:{start_time.timestamp()}:{end_time.timestamp()}"
     cached_payload = cache.get(cache_key)
     
     if cached_payload:
         data = json.loads(cached_payload)
     else:
-        # Cache miss: Execute the safe DB query callback
-        data = get_safe_chart_data(model, device_id, identifier, start_time, end_time)
-        
-        # CRITICAL FIX: DjangoJSONEncoder tells Python how to handle the datetime objects!
+        # Fetch up to 2000 raw points
+        data = get_safe_chart_data(device_id, identifier, start_time, end_time)
         cache.set(cache_key, json.dumps(data, cls=DjangoJSONEncoder), timeout=60)
 
     return Response({
-        "resolution": res_key, 
+        "resolution": "raw", 
         "data": data
     })
-
 
 def get_safe_indicator_chart_data(device_id, property_id, start_time, end_time, resolution_key):
     # Determine models based on router logic
