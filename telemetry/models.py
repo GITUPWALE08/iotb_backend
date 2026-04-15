@@ -81,7 +81,7 @@ class TelemetryRollup1Day(AbstractTelemetryRollup):
 class MediaLog(models.Model):
     MEDIA_TYPES = [('VIDEO', 'Video'), ('AUDIO', 'Audio')]
     
-    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='media_logs')
+    device = models.ForeignKey("devices.Device", on_delete=models.CASCADE, related_name='media_logs')
     file_type = models.CharField(max_length=10, choices=MEDIA_TYPES)
     # File is saved to local disk, DB stores the path
     file = models.FileField(upload_to='iot_media/%Y/%m/%d/')
@@ -103,7 +103,7 @@ class AlertThreshold(models.Model):
         ('EMAIL', 'Email'),
         ('SMS', 'SMS'),
     ]
-    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='alerts')
+    device = models.ForeignKey("devices.Device", on_delete=models.CASCADE, related_name='alerts')
     parameter = models.CharField(max_length=50) # e.g., 'temperature'
     min_value = models.FloatField(null=True, blank=True)
     max_value = models.FloatField(null=True, blank=True)
