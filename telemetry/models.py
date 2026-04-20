@@ -16,10 +16,10 @@ class TelemetryLog(models.Model):
 
     class Meta:
         db_table = 'telemetry_telemetrylog'
-        # indexes = [
-        #     models.Index(fields=['property', 'timestamp']),
-        # ]
-        # Indexes are handled manually in the migration for the partitioned table
+        indexes = [
+            models.Index(fields=['property', 'timestamp']),
+        ]
+        # Indexes are no longer handled manually in the migration for the partitioned table
         
 
 class AbstractTelemetryRollup(models.Model):
