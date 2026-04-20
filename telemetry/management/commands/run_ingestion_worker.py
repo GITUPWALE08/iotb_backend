@@ -4,7 +4,7 @@ from datetime import datetime
 
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import transaction, close_old_connections
 from django.core.mail import send_mail
 from django.conf import settings
 
@@ -194,6 +194,10 @@ class Command(BaseCommand):
 
                 push_to_dlq(raw_items, f"DB bulk insert error: {str(e)}")
                 continue
+            
+            finally:
+                # FIX: Release the database connection back to the pool at the end of every loop
+                close_old_connections()
 
             # -------------------------
             # 6. WEBSOCKET BROADCAST

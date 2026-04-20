@@ -141,8 +141,9 @@ DATABASES = {
             'DATABASE_URL',
             'postgresql://iot_user:wale%400811@127.0.0.1:5432/iot_bridge_db'
         ),
-        conn_max_age=600,
-        conn_health_checks=True,
+        conn_max_age=0,
+        conn_health_checks=True, # This ensures that Supabase's pooler handles the connections
+        ssl_require= True,
     )
 }
 
